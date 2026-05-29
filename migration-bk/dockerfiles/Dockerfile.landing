@@ -1,0 +1,27 @@
+# =====================================================================
+#  GoTaxi — Landing Page (gotaxi.com.br)
+#  Servidor Node puro (zero dependencias) que ja existe em saas-mobile/server
+#
+#  No Easypanel:
+#    - Build Path:        / (raiz do repo)
+#    - Dockerfile Path:   migration/dockerfiles/Dockerfile.landing
+#    - Porta exposta:     3000
+# =====================================================================
+
+FROM node:24-alpine
+
+WORKDIR /app
+
+# Copia apenas o necessario:
+#   - serve.js (o servidor)
+#   - templates/ (landing-page.html, pdv.html)
+#   - assets/ (imagens, qrcode, mockups)
+#   - app.json (usado pelo getAppName() para o titulo)
+COPY artifacts/saas-mobile/server ./server
+COPY artifacts/saas-mobile/app.json ./app.json
+
+ENV NODE_ENV=production
+ENV PORT=3000
+EXPOSE 3000
+
+CMD ["node", "server/serve.js"]

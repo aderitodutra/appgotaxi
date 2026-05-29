@@ -1,0 +1,75 @@
+# =====================================================================
+#  GoTaxi — API Server (Node 24 + Express + Drizzle + PostgreSQL)
+#  Monorepo pnpm — buildado a partir da raiz do repositório
+#
+#  Como usar no Easypanel:
+#    - Build Path:        / (raiz do repo)
+#    - Dockerfile Path:   migration/dockerfiles/Dockerfile.api
+#    - Porta exposta:     8080
+# =====================================================================
+
+# ---------- Stage 1: deps + build ----------
+FROM node:24-alpine AS builder
+
+# pnpm via corepack (mesma versão usada no projeto: 10.26.1)
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+WORKDIR /repo
+
+# Copia manifests primeiro (cache de dependências)
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json tsconfig.json ./
+COPY artifacts/api-server/package.json ./artifacts/api-server/
+COPY lib/db/package.json ./lib/db/
+COPY lib/api-zod/package.json ./lib/api-zod/
+COPY lib/api-spec/package.json ./lib/api-spec/
+COPY lib/api-client-react/package.json ./lib/api-client-react/
+
+# Instala TODAS as deps do workspace (necessário para typecheck/build)
+RUN pnpm install --frozen-lockfile=false
+
+# Copia o restante do código-fonte
+COPY artifacts/api-server ./artifacts/api-server
+COPY lib ./lib
+
+# Build da API (esbuild → dist/index.cjs)
+RUN pnpm --filter @workspace/api-server run build
+
+# ---------- Stage 2: runtime ----------
+FROM node:24-alpine AS runtime
+
+# Pacotes opcionais úteis em runtime (curl p/ healthcheck)
+RUN apk add --no-cache curl tini
+
+WORKDIR /app
+
+# Copia somente o necessário para rodar
+COPY --from=builder /repo/artifacts/api-server/dist ./dist
+COPY --from=builder /repo/artifacts/api-server/public ./public
+
+# Cria um package.json minimo (sem workspace deps) e instala as deps de runtime.
+# Nao copiamos o package.json do monorepo porque ele tem refs "workspace:*"
+# que somente o pnpm entende.
+ENV NODE_ENV=production
+RUN npm init -y >/dev/null && \
+    npm install --omit=dev --no-package-lock \
+      pg@^8.20.0 \
+      drizzle-orm@0.45.1 \
+      express@^5 \
+      cors@^2 \
+      bcryptjs@^3.0.3 \
+      cookie-parser@^1.4.7 \
+      jsonwebtoken@^9.0.3 \
+      multer@^2.1.1 \
+      openai@^6.35.0 \
+      google-auth-library@^10.6.2 \
+      "@google-cloud/storage@^7.19.0"
+
+# Volume para uploads persistentes (imagens enviadas pelo PDV/mobile)
+VOLUME ["/app/public/uploads"]
+
+# Porta padrão (sobrescreva no Easypanel se necessário)
+ENV PORT=8080
+EXPOSE 8080
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["node", "dist/index.cjs"]
