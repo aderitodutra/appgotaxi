@@ -5,7 +5,6 @@ import { eq, desc, and, sql } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { uploadImageToGCS } from "../lib/uploadImage";
 import { sendFcmNotification } from "./motorista-app";
 
 const uploadsDir = path.resolve(process.cwd(), "uploads/comprovantes");
@@ -23,10 +22,16 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 }, fileFil
   cb(null, allowed.includes(file.mimetype));
 }});
 
-const productImagesDir = path.resolve(process.cwd(), "public", "uploads");
+const productImagesDir = path.resolve(process.cwd(), "public", "uploads", "produtos");
 fs.mkdirSync(productImagesDir, { recursive: true });
 const productImageUpload = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, productImagesDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname) || ".jpg";
+      cb(null, `produto_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`);
+    },
+  }),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
@@ -753,7 +758,7 @@ router.post("/produtos/:id/imagem", productImageUpload.single("imagem"), async (
     if (!empresaId) return res.status(401).json({ error: "unauthorized" });
     const file = (req as any).file;
     if (!file) return res.status(400).json({ error: "no_file", message: "Nenhum ficheiro enviado" });
-    const imageUrl = await uploadImageToGCS(file.buffer, file.originalname, "produtos");
+    const imageUrl = `/uploads/produtos/${file.filename}`;
     await db.execute(`UPDATE produtos_pdv SET imagem = '${imageUrl}' WHERE id = ${Number(req.params.id)} AND empresa_id = ${empresaId}`);
     return res.json({ imagem: imageUrl });
   } catch (err) { console.error(err); return res.status(500).json({ error: "server_error" }); }
@@ -1966,7 +1971,7 @@ router.get("/perfil", async (req, res) => {
     const empresaId = getEmpresaId(req);
     if (!empresaId) return res.status(401).json({ error: "unauthorized" });
     const [emp, rest] = await Promise.all([
-      db.execute(`SELECT nome, telefone, cnpj FROM empresas WHERE id = ${empresaId} LIMIT 1`),
+      db.execute(`SELECT nome, telefone, cnpj, logo FROM empresas WHERE id = ${empresaId} LIMIT 1`),
       db.execute(`SELECT nome, categoria, descricao FROM restaurantes WHERE empresa_id = ${empresaId} LIMIT 1`),
     ]);
     const e = (emp.rows[0] as any) ?? {};
@@ -1977,6 +1982,7 @@ router.get("/perfil", async (req, res) => {
       descricao: r.descricao ?? "",
       telefone: e.telefone ?? "",
       cnpj: e.cnpj ?? "",
+      logo: e.logo ?? "",
     });
   } catch (err) { console.error(err); return res.status(500).json({ error: "server_error" }); }
 });
@@ -1986,10 +1992,11 @@ router.put("/perfil", async (req, res) => {
   try {
     const empresaId = getEmpresaId(req);
     if (!empresaId) return res.status(401).json({ error: "unauthorized" });
-    const { nome, categoria, descricao, telefone, cnpj } = req.body;
+    const { nome, categoria, descricao, telefone, cnpj, logo } = req.body;
     const safe = (v: unknown) => String(v ?? "").replace(/'/g, "''");
 
-    await db.execute(`UPDATE empresas SET nome = '${safe(nome)}', telefone = '${safe(telefone)}', cnpj = '${safe(cnpj)}' WHERE id = ${empresaId}`);
+    const logoSet = logo !== undefined ? `, logo = ${logo ? `'${safe(logo)}'` : "NULL"}` : "";
+    await db.execute(`UPDATE empresas SET nome = '${safe(nome)}', telefone = '${safe(telefone)}', cnpj = '${safe(cnpj)}'${logoSet} WHERE id = ${empresaId}`);
 
     const existing = await db.execute(`SELECT id FROM restaurantes WHERE empresa_id = ${empresaId} LIMIT 1`);
     if ((existing.rows as any[]).length > 0) {
@@ -1998,7 +2005,47 @@ router.put("/perfil", async (req, res) => {
       await db.execute(`INSERT INTO restaurantes (empresa_id, nome, categoria, descricao, aberto) VALUES (${empresaId}, '${safe(nome)}', '${safe(categoria)}', '${safe(descricao)}', true)`);
     }
 
-    return res.json({ ok: true, nome: safe(nome), categoria: safe(categoria), descricao: safe(descricao), telefone: safe(telefone), cnpj: safe(cnpj) });
+    return res.json({ ok: true, nome: safe(nome), categoria: safe(categoria), descricao: safe(descricao), telefone: safe(telefone), cnpj: safe(cnpj), logo: logo ?? "" });
+  } catch (err) { console.error(err); return res.status(500).json({ error: "server_error" }); }
+});
+
+// ── POST /api/pdv/perfil/imagem ──────────────────────────────────────────────
+// Upload da foto/logo da empresa (exibida nos cards do app mobile)
+const empresaImagesDir = path.resolve(process.cwd(), "public", "uploads", "empresas");
+fs.mkdirSync(empresaImagesDir, { recursive: true });
+const empresaImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, empresaImagesDir),
+    filename: (_req, file, cb) => {
+      const ext = path.extname(file.originalname) || ".jpg";
+      cb(null, `empresa_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`);
+    },
+  }),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    cb(null, allowed.includes(file.mimetype));
+  },
+});
+router.post("/perfil/imagem", empresaImageUpload.single("imagem"), async (req, res) => {
+  try {
+    const empresaId = getEmpresaId(req);
+    if (!empresaId) return res.status(401).json({ error: "unauthorized" });
+    const file = (req as any).file;
+    if (!file) return res.status(400).json({ error: "no_file", message: "Nenhum ficheiro enviado" });
+    const imageUrl = `/uploads/empresas/${file.filename}`;
+    await db.execute(`UPDATE empresas SET logo = '${imageUrl}' WHERE id = ${empresaId}`);
+    return res.json({ logo: imageUrl });
+  } catch (err) { console.error(err); return res.status(500).json({ error: "server_error" }); }
+});
+
+// ── DELETE /api/pdv/perfil/imagem ────────────────────────────────────────────
+router.delete("/perfil/imagem", async (req, res) => {
+  try {
+    const empresaId = getEmpresaId(req);
+    if (!empresaId) return res.status(401).json({ error: "unauthorized" });
+    await db.execute(`UPDATE empresas SET logo = NULL WHERE id = ${empresaId}`);
+    return res.json({ ok: true });
   } catch (err) { console.error(err); return res.status(500).json({ error: "server_error" }); }
 });
 

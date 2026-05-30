@@ -41,6 +41,46 @@ const PAYMENT_METHODS = [
   { key: "sodexo",   label: "Sodexo / Alelo",        emoji: "🏷️", color: "#EF4444" },
 ];
 
+// Redimensiona qualquer imagem para o padrão de banner mobile 16:9 (1280×720).
+// Crop central, JPEG qualidade 85. Garante uniformidade visual nos cards do app
+// e reduz drasticamente o peso da imagem.
+async function resizeImageToBanner(file: File, width = 1280, height = 720): Promise<Blob> {
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error("Falha ao ler imagem"));
+    reader.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const i = new window.Image();
+    i.onload = () => resolve(i);
+    i.onerror = () => reject(new Error("Imagem inválida"));
+    i.src = dataUrl;
+  });
+  // Crop central preservando proporção 16:9
+  const targetRatio = width / height;
+  const srcRatio = img.width / img.height;
+  let sx = 0, sy = 0, sw = img.width, sh = img.height;
+  if (srcRatio > targetRatio) {
+    // imagem mais larga: corta laterais
+    sw = img.height * targetRatio;
+    sx = (img.width - sw) / 2;
+  } else {
+    // imagem mais alta: corta topo/baixo
+    sh = img.width / targetRatio;
+    sy = (img.height - sh) / 2;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas não suportado");
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, width, height);
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(b => b ? resolve(b) : reject(new Error("Falha ao gerar imagem")), "image/jpeg", 0.85);
+  });
+}
+
 export default function Configuracoes() {
   const { token, empresa } = useAuth();
   const isPassagens = empresa?.modulosAtivos?.includes("passagens") && !empresa?.modulosAtivos?.includes("food") && !empresa?.modulosAtivos?.includes("ecommerce");
@@ -71,10 +111,12 @@ export default function Configuracoes() {
   const [pixError, setPixError] = useState("");
   const [pixCopiado, setPixCopiado] = useState(false);
 
-  const [perfil, setPerfil] = useState({ nome: "", categoria: "", descricao: "", telefone: "", cnpj: "" });
+  const [perfil, setPerfil] = useState({ nome: "", categoria: "", descricao: "", telefone: "", cnpj: "", logo: "" });
   const [savingPerfil, setSavingPerfil] = useState(false);
   const [savedPerfil, setSavedPerfil] = useState(false);
   const [perfilError, setPerfilError] = useState("");
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoError, setLogoError] = useState("");
 
   const [senhaAtual, setSenhaAtual] = useState("");
   const [novaSenha, setNovaSenha] = useState("");
@@ -136,7 +178,7 @@ export default function Configuracoes() {
       });
       if (pag?.metodos) setMetodosPag(pag.metodos);
       if (pix?.chave_pix !== undefined) { setPixChave(pix.chave_pix ?? ""); setPixTipo(pix.tipo_chave_pix ?? "aleatoria"); }
-      if (perfilData) setPerfil({ nome: perfilData.nome ?? "", categoria: perfilData.categoria ?? "", descricao: perfilData.descricao ?? "", telefone: perfilData.telefone ?? "", cnpj: perfilData.cnpj ?? "" });
+      if (perfilData) setPerfil({ nome: perfilData.nome ?? "", categoria: perfilData.categoria ?? "", descricao: perfilData.descricao ?? "", telefone: perfilData.telefone ?? "", cnpj: perfilData.cnpj ?? "", logo: perfilData.logo ?? "" });
     })
     .catch(() => {})
     .finally(() => { setLoading(false); setLoadingPag(false); });
@@ -156,6 +198,47 @@ export default function Configuracoes() {
       setPerfilError(`Falha de conexão: ${err instanceof Error ? err.message : String(err)}`);
     }
     setSavingPerfil(false);
+  };
+
+  const handleUploadLogo = async (file: File) => {
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) { setLogoError("Imagem muito grande (máx. 5MB)"); return; }
+    setUploadingLogo(true); setLogoError("");
+    try {
+      // Padroniza para banner mobile 16:9 (1280×720) — crop central
+      const resized = await resizeImageToBanner(file);
+      const fd = new FormData();
+      fd.append("imagem", resized, "banner.jpg");
+      const r = await fetch("/api/pdv/perfil/imagem", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
+      });
+      if (r.ok) {
+        const data = await r.json();
+        setPerfil(p => ({ ...p, logo: data.logo }));
+      } else {
+        setLogoError("Erro ao enviar imagem. Tente novamente.");
+      }
+    } catch (err) {
+      setLogoError(err instanceof Error ? err.message : "Falha ao processar imagem.");
+    }
+    setUploadingLogo(false);
+  };
+
+  const handleRemoveLogo = async () => {
+    setUploadingLogo(true); setLogoError("");
+    try {
+      const r = await fetch("/api/pdv/perfil/imagem", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (r.ok) setPerfil(p => ({ ...p, logo: "" }));
+      else setLogoError("Erro ao remover imagem.");
+    } catch {
+      setLogoError("Falha de conexão.");
+    }
+    setUploadingLogo(false);
   };
 
   const handleSavePix = async () => {
@@ -309,6 +392,60 @@ export default function Configuracoes() {
         </div>
         <Card className="md:col-span-2 shadow-sm border-border/50">
           <CardContent className="p-6 space-y-4">
+            {/* Banner / Foto da Loja */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Banner / Foto da Loja</label>
+              <p className="text-xs text-muted-foreground">Esta imagem será exibida no app dos clientes nos destaques e listas de parceiros (padrão banner mobile 16:9).</p>
+              <div className="flex items-center gap-4">
+                <div className="relative w-48 aspect-video rounded-2xl overflow-hidden border border-border bg-muted/50 flex items-center justify-center shrink-0">
+                  {perfil.logo ? (
+                    <img src={perfil.logo} alt="Banner" className="w-full h-full object-cover" />
+                  ) : (
+                    <Store className="w-8 h-8 text-muted-foreground" />
+                  )}
+                  {uploadingLogo && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Loader2 className="w-5 h-5 text-white animate-spin" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="inline-flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      className="hidden"
+                      disabled={uploadingLogo}
+                      onChange={e => {
+                        const f = e.target.files?.[0];
+                        if (f) handleUploadLogo(f);
+                        e.target.value = "";
+                      }}
+                    />
+                    {perfil.logo ? "Trocar imagem" : "Enviar imagem"}
+                  </label>
+                  {perfil.logo && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      disabled={uploadingLogo}
+                      className="text-xs text-destructive hover:underline text-left"
+                    >
+                      Remover imagem
+                    </button>
+                  )}
+                  <p className="text-[10px] text-muted-foreground">JPG, PNG ou WebP, até 5MB · será ajustada para 1280×720px (16:9)</p>
+                </div>
+              </div>
+              {logoError && (
+                <div className="flex items-center gap-2 text-destructive text-xs bg-destructive/10 px-3 py-2 rounded-lg">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {logoError}
+                </div>
+              )}
+            </div>
+
+            <div className="h-px bg-border/50" />
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Nome da Loja</label>

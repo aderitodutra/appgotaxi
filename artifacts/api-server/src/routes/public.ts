@@ -462,6 +462,7 @@ router.get("/parceiros", async (req, res) => {
         e.id,
         e.nome,
         e.cor_primaria as cor,
+        e.logo as logo,
         e.modulos_ativos::text as modulos_ativos_text,
         e.destaque,
         e.ecommerce_categoria as categoria,
@@ -473,7 +474,7 @@ router.get("/parceiros", async (req, res) => {
       FROM empresas e
       LEFT JOIN produtos_pdv p ON p.empresa_id = e.id AND p.ativo = true
       WHERE e.ativo = true
-      GROUP BY e.id, e.nome, e.cor_primaria, e.destaque, e.ecommerce_categoria
+      GROUP BY e.id, e.nome, e.cor_primaria, e.logo, e.destaque, e.ecommerce_categoria
       ORDER BY e.destaque DESC, e.nome
     `);
     return res.json((rows.rows as any[]).map((r: any) => {
@@ -486,6 +487,7 @@ router.get("/parceiros", async (req, res) => {
         id: r.id,
         nome: r.nome,
         cor: r.cor ?? "#22C55E",
+        logo: r.logo ?? null,
         modulos,
         destaque: r.destaque === true,
         categoria: r.categoria ?? r.categoria_pdv ?? "Parceiro",
@@ -844,4 +846,3 @@ router.post("/pedido/comprovante", async (req, res) => {
 });
 
 export default router;
-
