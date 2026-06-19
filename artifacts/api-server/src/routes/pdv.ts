@@ -47,7 +47,43 @@ const router: IRouter = Router();
     await db.execute(sql`ALTER TABLE promocoes_pdv ADD COLUMN IF NOT EXISTS produto_id INTEGER REFERENCES produtos_pdv(id) ON DELETE SET NULL`);
     await db.execute(sql`ALTER TABLE promocoes_pdv ADD COLUMN IF NOT EXISTS preco_promocional NUMERIC(10,2)`);
     await db.execute(sql`ALTER TABLE promocoes_pdv ADD COLUMN IF NOT EXISTS quantidade_disponivel INTEGER`);
-  } catch (e) { console.error("[pdv migrations]", e); }
+  } catch (e) { console.error("[pdv migrations promocoes]", e); }
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS grupos_extras_pdv (
+        id SERIAL PRIMARY KEY,
+        empresa_id INTEGER NOT NULL,
+        nome TEXT NOT NULL,
+        min_selecoes INTEGER NOT NULL DEFAULT 0,
+        max_selecoes INTEGER NOT NULL DEFAULT 1,
+        obrigatorio BOOLEAN NOT NULL DEFAULT false,
+        ordem INTEGER NOT NULL DEFAULT 0,
+        ativo BOOLEAN NOT NULL DEFAULT true,
+        criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS opcoes_grupo_extras_pdv (
+        id SERIAL PRIMARY KEY,
+        grupo_id INTEGER NOT NULL REFERENCES grupos_extras_pdv(id) ON DELETE CASCADE,
+        nome TEXT NOT NULL,
+        preco_adicional NUMERIC(10,2) NOT NULL DEFAULT 0,
+        ordem INTEGER NOT NULL DEFAULT 0,
+        ativo BOOLEAN NOT NULL DEFAULT true
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS produto_grupos_extras_pdv (
+        produto_id INTEGER NOT NULL REFERENCES produtos_pdv(id) ON DELETE CASCADE,
+        grupo_id INTEGER NOT NULL REFERENCES grupos_extras_pdv(id) ON DELETE CASCADE,
+        ordem INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    await db.execute(sql`ALTER TABLE produto_grupos_extras_pdv ADD COLUMN IF NOT EXISTS min_selecoes INTEGER`);
+    await db.execute(sql`ALTER TABLE produto_grupos_extras_pdv ADD COLUMN IF NOT EXISTS max_selecoes INTEGER`);
+    await db.execute(sql`ALTER TABLE produto_grupos_extras_pdv ADD COLUMN IF NOT EXISTS obrigatorio BOOLEAN`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_pgpe_produto_grupo ON produto_grupos_extras_pdv (produto_id, grupo_id)`);
+  } catch (e) { console.error("[pdv migrations grupos]", e); }
 })();
 
 // ── SSE clients map: empresaId → Set<res> ──────────────────────────────────
@@ -664,34 +700,42 @@ router.delete("/grupos/opcoes/:id", async (req, res) => {
   } catch (err) { console.error(err); return res.status(500).json({ error: "server_error" }); }
 });
 
-// Buscar grupos vinculados a um produto
+// Buscar grupos vinculados a um produto (com overrides por produto)
 router.get("/produtos/:id/grupos", async (req, res) => {
   try {
     const empresaId = getEmpresaId(req);
     if (!empresaId) return res.status(401).json({ error: "unauthorized" });
     const produtoId = Number(req.params.id);
     const result = await db.execute(
-      `SELECT pg.grupo_id as id FROM produto_grupos_extras_pdv pg
+      `SELECT pg.grupo_id as id, pg.min_selecoes, pg.max_selecoes, pg.obrigatorio
+       FROM produto_grupos_extras_pdv pg
        JOIN grupos_extras_pdv g ON g.id = pg.grupo_id
        WHERE pg.produto_id = ${produtoId} AND g.empresa_id = ${empresaId}
        ORDER BY pg.ordem, pg.grupo_id`
     );
-    return res.json((result.rows as any[]).map(r => r.id));
+    return res.json(result.rows);
   } catch (err) { console.error(err); return res.status(500).json({ error: "server_error" }); }
 });
 
-// Vincular grupos a produto
+// Vincular grupos a produto (com overrides individuais por produto)
 router.put("/produtos/:id/grupos", async (req, res) => {
   try {
     const empresaId = getEmpresaId(req);
     if (!empresaId) return res.status(401).json({ error: "unauthorized" });
     const produtoId = Number(req.params.id);
-    const { grupoIds } = req.body;
+    const { grupoIds, overrides } = req.body;
     await db.execute(`DELETE FROM produto_grupos_extras_pdv WHERE produto_id = ${produtoId}`);
     if (Array.isArray(grupoIds)) {
       for (let i = 0; i < grupoIds.length; i++) {
+        const gid = Number(grupoIds[i]);
+        const ov = (overrides && overrides[String(gid)]) ? overrides[String(gid)] : {};
+        const min = ov.min_selecoes !== undefined ? Number(ov.min_selecoes) : "NULL";
+        const max = ov.max_selecoes !== undefined ? Number(ov.max_selecoes) : "NULL";
+        const obrig = ov.obrigatorio !== undefined ? (ov.obrigatorio ? "true" : "false") : "NULL";
         await db.execute(
-          `INSERT INTO produto_grupos_extras_pdv (produto_id, grupo_id, ordem) VALUES (${produtoId}, ${Number(grupoIds[i])}, ${i}) ON CONFLICT DO NOTHING`
+          `INSERT INTO produto_grupos_extras_pdv (produto_id, grupo_id, ordem, min_selecoes, max_selecoes, obrigatorio)
+           VALUES (${produtoId}, ${gid}, ${i}, ${min}, ${max}, ${obrig}) ON CONFLICT (produto_id, grupo_id) DO UPDATE
+           SET ordem = ${i}, min_selecoes = ${min}, max_selecoes = ${max}, obrigatorio = ${obrig}`
         );
       }
     }
@@ -1245,7 +1289,10 @@ router.post("/calcular-frete", async (req, res) => {
 router.get("/maps-key", (req, res) => {
   const empresaId = getEmpresaId(req);
   if (!empresaId) return res.status(401).json({ error: "unauthorized" });
-  return res.json({ key: process.env.GOOGLE_MAPS_KEY || "" });
+  // GOOGLE_MAPS_WEB_KEY é a chave configurada para uso em browser (HTTP referrer)
+  // Fallback para GOOGLE_MAPS_KEY se a web key não estiver definida
+  const key = process.env.GOOGLE_MAPS_WEB_KEY || process.env.GOOGLE_MAPS_KEY || "";
+  return res.json({ key });
 });
 
 // ── Timeline: Config do restaurante (lat/lng) ─────────────────────────────

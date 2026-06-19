@@ -408,17 +408,18 @@ router.get("/parceiros/:empresaId/cardapio", async (req, res) => {
             SELECT json_agg(
               json_build_object(
                 'id', g.id, 'nome', g.nome,
-                'min_selecoes', g.min_selecoes, 'max_selecoes', g.max_selecoes,
-                'obrigatorio', g.obrigatorio,
+                'min_selecoes', COALESCE(pg.min_selecoes, g.min_selecoes),
+                'max_selecoes', COALESCE(pg.max_selecoes, g.max_selecoes),
+                'obrigatorio', COALESCE(pg.obrigatorio, g.obrigatorio),
                 'opcoes', COALESCE((
                   SELECT json_agg(json_build_object('id', o.id, 'nome', o.nome, 'preco_adicional', o.preco_adicional) ORDER BY o.ordem, o.id)
-                  FROM opcoes_grupo_extras_pdv o WHERE o.grupo_id = g.id AND o.ativo = true
+                  FROM opcoes_grupo_extras_pdv o WHERE o.grupo_id = g.id AND o.ativo IS NOT FALSE
                 ), '[]'::json)
               ) ORDER BY pg.ordem, g.id
             )
             FROM produto_grupos_extras_pdv pg
             JOIN grupos_extras_pdv g ON g.id = pg.grupo_id
-            WHERE pg.produto_id = p.id AND g.ativo = true
+            WHERE pg.produto_id = p.id AND g.ativo IS NOT FALSE
           ), '[]'::json) as grupos
         FROM produtos_pdv p
         LEFT JOIN categorias_pdv c ON c.id = p.categoria_id

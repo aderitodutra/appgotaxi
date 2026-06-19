@@ -4,7 +4,7 @@ import OpenAI from "openai";
 
 const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || "dummy",
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "dummy",
 });
 
 function getEmpresaId(req: any): number | null {
@@ -49,14 +49,14 @@ async function generateAiReply(ticketId: number, novaMsg: string): Promise<strin
     }
     messages.push({ role: "user", content: novaMsg });
 
+    console.log("[suporte-ia] usando modelo gpt-4o-mini, key=" + (process.env.OPENAI_API_KEY ? "presente" : process.env.AI_INTEGRATIONS_OPENAI_API_KEY ? "integrations" : "ausente"));
     const completion = await openai.chat.completions.create({
-      model: "gpt-4.1-nano",
-      max_completion_tokens: 512,
+      model: "gpt-4o-mini",
       messages,
     });
     return completion.choices[0]?.message?.content ?? null;
-  } catch (err) {
-    console.error("[suporte-ia] erro:", err);
+  } catch (err: any) {
+    console.error("[suporte-ia] erro:", err?.message || err, err?.status || "", err?.response?.data || "");
     return null;
   }
 }

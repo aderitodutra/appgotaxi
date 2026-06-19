@@ -10,6 +10,7 @@ import {
   Dimensions,
   Animated,
   TouchableOpacity,
+  Image,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -81,6 +82,7 @@ interface EmpresaDestaque {
   id: number;
   nome: string;
   cor: string;
+  logo?: string | null;
   modulos: string[];
   destaque: boolean;
   categoria: string;
@@ -290,12 +292,11 @@ function EmpresaCard({ empresa }: { empresa: EmpresaDestaque }) {
   const colors = isDark ? Colors.dark : Colors.light;
   const scale = useRef(new Animated.Value(1)).current;
 
-  const onPressIn = () => Animated.spring(scale, { toValue: 0.95, useNativeDriver: true, speed: 50 }).start();
+  const onPressIn = () => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 50 }).start();
   const onPressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 50 }).start();
 
   const primeiroModulo = empresa.modulos.find(m => MODULO_NAV[m]);
   const iconInfo = primeiroModulo ? MODULO_ICONE[primeiroModulo] : null;
-  const bgColor = isDark ? empresa.cor + "25" : empresa.cor + "18";
 
   const handlePress = () => {
     if (primeiroModulo && MODULO_NAV[primeiroModulo]) {
@@ -303,19 +304,32 @@ function EmpresaCard({ empresa }: { empresa: EmpresaDestaque }) {
     }
   };
 
+  const cardWidth = width * 0.72;
+
   return (
-    <Pressable onPress={handlePress} onPressIn={onPressIn} onPressOut={onPressOut} style={{ flex: 1 }}>
+    <Pressable onPress={handlePress} onPressIn={onPressIn} onPressOut={onPressOut} style={{ width: cardWidth, marginRight: 12 }}>
       <Animated.View style={{ transform: [{ scale }] }}>
-        <View style={[styles.empresaImagem, { backgroundColor: bgColor, aspectRatio: 1 }]}>
-          <View style={[styles.empresaIconCircle, { backgroundColor: empresa.cor }]}>
-            <Feather name={(iconInfo?.icon ?? "star") as any} size={22} color="#fff" />
-          </View>
+        <View style={[styles.empresaBanner, { backgroundColor: empresa.cor + "20" }]}>
+          {empresa.logo ? (
+            <Image source={{ uri: empresa.logo }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+          ) : (
+            <View style={[styles.empresaIconCircle, { backgroundColor: empresa.cor }]}>
+              <Feather name={(iconInfo?.icon ?? "star") as any} size={28} color="#fff" />
+            </View>
+          )}
+          {/* Gradiente para legibilidade do nome sobre a foto */}
+          <LinearGradient
+            colors={["transparent", "rgba(0,0,0,0.7)"]}
+            style={styles.empresaBannerGradient}
+          />
           <View style={[styles.starBadge, { backgroundColor: empresa.cor }]}>
-            <Feather name="star" size={9} color="#fff" />
+            <Feather name="star" size={10} color="#fff" />
+          </View>
+          <View style={styles.empresaBannerInfo}>
+            <Text style={[styles.empresaBannerNome, { fontFamily: "Inter_700Bold" }]} numberOfLines={1}>{empresa.nome}</Text>
+            <Text style={[styles.empresaBannerCat, { fontFamily: "Inter_500Medium" }]} numberOfLines={1}>{empresa.categoria}</Text>
           </View>
         </View>
-        <Text style={[styles.empresaNome, { color: colors.text }]} numberOfLines={1}>{empresa.nome}</Text>
-        <Text style={[styles.empresaCat, { color: colors.textSecondary }]} numberOfLines={1}>{empresa.categoria}</Text>
       </Animated.View>
     </Pressable>
   );
@@ -464,8 +478,8 @@ export default function ClienteHome() {
 
         {/* EMPRESAS EM DESTAQUE */}
         {destaques.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
+          <View style={[styles.section, { paddingHorizontal: 0 }]}>
+            <View style={[styles.sectionHeader, { paddingHorizontal: 16 }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <View style={[styles.sectionIcon, { backgroundColor: "#F59E0B" }]}>
                   <Feather name="star" size={14} color="#fff" />
@@ -477,14 +491,15 @@ export default function ClienteHome() {
               </Pressable>
             </View>
 
-            <FlatList
-              data={destaques}
-              keyExtractor={(item) => String(item.id)}
-              numColumns={3}
-              scrollEnabled={false}
-              columnWrapperStyle={{ gap: 8, marginBottom: 8 }}
-              renderItem={({ item }) => <EmpresaCard empresa={item} />}
-            />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 4 }}
+            >
+              {destaques.map(item => (
+                <EmpresaCard key={String(item.id)} empresa={item} />
+              ))}
+            </ScrollView>
           </View>
         )}
       </ScrollView>
@@ -588,6 +603,38 @@ const styles = StyleSheet.create({
 
   /* Empresas */
   empresasGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  empresaBanner: {
+    width: "100%",
+    aspectRatio: 16 / 9,
+    borderRadius: 16,
+    overflow: "hidden",
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  empresaBannerGradient: {
+    position: "absolute",
+    left: 0, right: 0, bottom: 0,
+    height: "55%",
+  },
+  empresaBannerInfo: {
+    position: "absolute",
+    left: 12, right: 12, bottom: 10,
+  },
+  empresaBannerNome: {
+    color: "#fff",
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  empresaBannerCat: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 12,
+  },
   empresaImagem: {
     borderRadius: 16,
     alignItems: "center",

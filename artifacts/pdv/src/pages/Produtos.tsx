@@ -1001,8 +1001,22 @@ function ProdutoDialog({
       setImageBlob(null);
       // ── Load grupos já vinculados ao produto (para edição) ──────────────
       if (produto?.id) {
-        api.get(`produtos/${produto.id}/grupos`).then((ids: number[]) => {
-          if (Array.isArray(ids)) setSelectedGrupos(new Set(ids));
+        api.get(`produtos/${produto.id}/grupos`).then((rows: { id: number; min_selecoes: number | null; max_selecoes: number | null; obrigatorio: boolean | null }[]) => {
+          if (Array.isArray(rows)) {
+            const ids = new Set(rows.map(r => r.id));
+            const ovs: Record<number, { min: string; max: string; obrig: boolean }> = {};
+            for (const r of rows) {
+              if (r.min_selecoes !== null || r.max_selecoes !== null || r.obrigatorio !== null) {
+                ovs[r.id] = {
+                  min: String(r.min_selecoes ?? ""),
+                  max: String(r.max_selecoes ?? ""),
+                  obrig: r.obrigatorio ?? false,
+                };
+              }
+            }
+            setSelectedGrupos(ids);
+            setGrupoOverrides(ovs);
+          }
         }).catch(() => {});
       }
     }
@@ -1061,15 +1075,19 @@ function ProdutoDialog({
       produtoId = r?.id;
     }
     if (produtoId) {
-      await api.put(`produtos/${produtoId}/grupos`, { grupoIds: Array.from(selectedGrupos) });
-      // Aplicar overrides de min/max/obrig nos grupos que foram editados inline
+      // Vincular grupos com overrides por produto (min/max/obrig ficam individuais)
+      const overrides: Record<string, { min_selecoes: number; max_selecoes: number; obrigatorio: boolean }> = {};
       for (const [gidStr, ov] of Object.entries(grupoOverrides)) {
-        await api.patch(`grupos/${gidStr}`, {
+        overrides[gidStr] = {
           min_selecoes: parseInt(ov.min) || 0,
           max_selecoes: parseInt(ov.max) || 1,
           obrigatorio: ov.obrig,
-        });
+        };
       }
+      await api.put(`produtos/${produtoId}/grupos`, {
+        grupoIds: Array.from(selectedGrupos),
+        overrides,
+      });
     }
     if (imageBlob && produtoId) {
       await api.uploadImage(produtoId, imageBlob, "webp");
@@ -1277,7 +1295,18 @@ function ProdutoDialog({
                   const curMax = ov ? ov.max : String(g.max_selecoes);
                   const curObrig = ov ? ov.obrig : g.obrigatorio;
                   const setOv = (patch: Partial<{ min: string; max: string; obrig: boolean }>) =>
-                    setGrupoOverrides(prev => ({ ...prev, [g.id]: { min: curMin, max: curMax, obrig: curObrig, ...patch } }));
+                    setGrupoOverrides(prev => {
+                      const existing = prev[g.id];
+                      return {
+                        ...prev,
+                        [g.id]: {
+                          min: existing?.min ?? String(g.min_selecoes),
+                          max: existing?.max ?? String(g.max_selecoes),
+                          obrig: existing?.obrig ?? g.obrigatorio,
+                          ...patch,
+                        },
+                      };
+                    });
                   return (
                     <div key={g.id}>
                       {/* Row principal — clica para selecionar/desselecionar */}

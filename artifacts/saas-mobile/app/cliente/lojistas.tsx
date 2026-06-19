@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, Pressable, useColorScheme, Platform, TextInput, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, useColorScheme, Platform, TextInput, ActivityIndicator, Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -36,6 +36,7 @@ type Parceiro = {
   id: number;
   nome: string;
   cor: string;
+  logo?: string | null;
   modulos: string[];
   destaque: boolean;
   categoria: string;
@@ -173,8 +174,12 @@ export default function LojistasScreen() {
               <Pressable key={loj.id} onPress={() => handleTap(loj)}
                 style={[styles.lojCard, { backgroundColor: colors.card, borderColor: isVendorCart ? modInfo.cor : colors.border,
                   borderWidth: isVendorCart ? 2 : 1 }]}>
-                <View style={[styles.lojImagem, { backgroundColor: loj.cor + "20" }]}>
-                  <Feather name={(modInfo?.icone ?? "briefcase") as any} size={28} color={loj.cor} />
+                <View style={[styles.lojImagem, { backgroundColor: loj.cor + "20", overflow: "hidden" }]}>
+                  {loj.logo ? (
+                    <Image source={{ uri: loj.logo }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                  ) : (
+                    <Feather name={(modInfo?.icone ?? "briefcase") as any} size={28} color={loj.cor} />
+                  )}
                   {loj.destaque && (
                     <View style={[styles.destaqueTag, { backgroundColor: "#FEF3C7" }]}>
                       <Feather name="star" size={10} color="#F59E0B" />
