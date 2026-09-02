@@ -7,6 +7,7 @@ const IconEmpresas = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="no
 const IconUsuarios = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>;
 const IconPedidos = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>;
 const IconRepasses = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
+const IconMercadoPago = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 8.5C3 6.57 4.57 5 6.5 5h11C19.43 5 21 6.57 21 8.5v7c0 1.93-1.57 3.5-3.5 3.5h-11C4.57 19 3 17.43 3 15.5v-7Z"/><path d="M3 9h18M7 14h3"/></svg>;
 const IconMotoristas = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l2 2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49M7.76 7.76a6 6 0 0 0 0 8.49"/></svg>;
 const IconCorridas = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>;
 const IconEntregadores = () => <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="7" r="4"/><path d="M5.5 21a7.5 7.5 0 0 1 13 0"/><path d="M15 14l3 3-3 3"/></svg>;
@@ -109,6 +110,7 @@ function getPageLabel(location: string): string {
   if (location.startsWith("/destaques")) return "Destaques no App";
   if (location.startsWith("/modulos")) return "Módulos";
   if (location.startsWith("/caronas-config")) return "Viagens Compartilhadas";
+  if (location.startsWith("/configuracoes-sistema")) return "Financeiro — Mercado Pago";
   if (location.startsWith("/configuracoes")) return "Configurações";
   return "Admin";
 }
@@ -157,7 +159,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* Brand */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-sidebar-border shrink-0">
           <div className="flex-1 min-w-0">
-            <img src="/logo.png" alt="Go Taxi" className="h-8 object-contain object-left" />
+            <img src="/admin/logo.png" alt="Go Taxi" className="h-8 object-contain object-left" />
             <p className="text-[10px] text-primary font-semibold uppercase tracking-wider mt-0.5">Super Admin</p>
           </div>
         </div>
@@ -500,6 +502,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               }`}>
               <span className={location.startsWith("/repasses") ? "text-primary" : "text-muted-foreground"}><IconRepasses /></span>
               Repasses
+            </a>
+          </Link>
+          <Link href="/configuracoes-sistema?tab=mercadopago">
+            <a onClick={closeSidebar}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                location.startsWith("/configuracoes-sistema") ? "bg-primary/15 text-primary" : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
+              }`}>
+              <span className={location.startsWith("/configuracoes-sistema") ? "text-primary" : "text-muted-foreground"}><IconMercadoPago /></span>
+              Mercado Pago
             </a>
           </Link>
           <Link href="/afiliados-admin">

@@ -11,6 +11,9 @@ import Colors from "@/constants/colors";
 import { useAuthGate } from "@/components/AuthGate";
 import { useCustomerAuth } from "@/context/CustomerAuthContext";
 import SegmentoBottomNav, { SEGMENTO_NAV_HEIGHT } from "@/components/SegmentoBottomNav";
+import PaymentSelector from "@/components/PaymentSelector";
+import { getWallet, checkoutPayment } from "@/api/payments";
+import * as Linking from "expo-linking";
 
 const FP_LABELS: Record<string, { label: string; icon: string; color: string }> = {
   pix:              { label: "Pix",                icon: "zap",          color: "#22C55E" },
@@ -52,7 +55,6 @@ type Parceiro = {
   nome: string;
   cor: string | null;
   total_produtos: number;
-  aberto: boolean;
   subcategoria_id: number | null;
   subcategoria_nome: string | null;
   subcategoria_slug: string | null;
@@ -138,8 +140,17 @@ export default function ClienteFood() {
   const [pedidoFeito, setPedidoFeito] = useState(false);
   const [pedidoId, setPedidoId] = useState<number | null>(null);
   const [enviandoPedido, setEnviandoPedido] = useState(false);
+  const [paymentSource, setPaymentSource] = useState<"direto" | "mercado_pago" | null>(null);
   const [formaEscolhida, setFormaEscolhida] = useState<string | null>(null);
   const [formasPagamento, setFormasPagamento] = useState<string[]>([]);
+  const [walletBalance, setWalletBalance] = useState(0);
+
+  useEffect(() => {
+    if (customer?.token) {
+      getWallet(customer.token).then(d => setWalletBalance(d.balanceCents)).catch(() => {});
+    }
+  }, [customer?.token]);
+
   // Captura a forma de pagamento e parceiro no momento exato do pedido,
   // evitando race conditions com o estado formaEscolhida em producao (New Arch)
   const pedidoFormaPagamentoRef = React.useRef<string | null>(null);
@@ -365,12 +376,6 @@ export default function ClienteFood() {
     if (!formaEscolhida || !parceiroSel) return;
     setEnviandoPedido(true);
     try {
-      if (parceiroSel.aberto === false) {
-        Alert.alert("Loja fechada", "Este estabelecimento está fechado no momento. Tente mais tarde.");
-        setEnviandoPedido(false);
-        return;
-      }
-
       const taxaEntrega = tipoEntrega === "delivery" ? (taxaCalculada ?? 0) : 0;
       const totalPedido = totalCarrinho + taxaEntrega;
 
@@ -423,6 +428,25 @@ export default function ClienteFood() {
         return;
       }
       const resData = await r.json().catch(() => ({}));
+      
+      if (paymentSource === "mercado_pago") {
+        try {
+          const checkout = await checkoutPayment(customer?.token || "", {
+            module: "food",
+            referenceId: resData.id,
+            paymentSource: "mercado_pago",
+            mercadoPagoMethod: formaEscolhida as any
+          });
+          if (checkout.sandboxInitPoint) {
+            Linking.openURL(checkout.sandboxInitPoint);
+          } else if (checkout.initPoint) {
+            Linking.openURL(checkout.initPoint);
+          }
+        } catch (e: any) {
+          Alert.alert("Aviso", "Pedido criado, mas houve falha ao iniciar o Mercado Pago.");
+        }
+      }
+
       setPedidoId(resData.id ?? null);
       if (formaEscolhida === "credito_gotaxi") {
         setCreditoDisponivel(prev => Math.max(0, prev - totalPedido));
@@ -805,51 +829,28 @@ export default function ClienteFood() {
             {/* ── Payment method selector ──────────────────────────────── */}
             <View style={{ marginTop: 4 }}>
               <Text style={[styles.sectionTitle, { color: colors.text, fontFamily: "Inter_700Bold", fontSize: 15, marginBottom: 10 }]}>
-                Forma de Pagamento
+                Pagamento
               </Text>
-              {formasPagamento.length === 0 ? (
-                <Text style={{ color: colors.textSecondary, fontFamily: "Inter_400Regular", fontSize: 13 }}>
-                  Nenhuma forma de pagamento disponível.
-                </Text>
-              ) : (
-                <View style={{ gap: 8 }}>
-                  {formasPagamento.map(key => {
-                    const meta = FP_LABELS[key];
-                    if (!meta) return null;
-                    const selected = formaEscolhida === key;
-                    const isCredito = key === "credito_gotaxi";
-                    const labelDisplay = isCredito
-                      ? `Crédito GoTaxi  •  R$ ${creditoDisponivel.toFixed(2)} disponível`
-                      : meta.label;
-                    return (
-                      <Pressable
-                        key={key}
-                        onPress={() => setFormaEscolhida(key)}
-                        style={[
-                          styles.fpOption,
-                          {
-                            backgroundColor: selected ? meta.color + "18" : colors.card,
-                            borderColor: selected ? meta.color : colors.border,
-                            borderWidth: selected ? 2 : 1,
-                          },
-                        ]}
-                      >
-                        <View style={[styles.fpIconBox, { backgroundColor: meta.color + "22" }]}>
-                          <Feather name={meta.icon as any} size={18} color={meta.color} />
-                        </View>
-                        <Text style={[styles.fpOptionLabel, { color: colors.text, fontFamily: selected ? "Inter_700Bold" : "Inter_500Medium" }]}>
-                          {labelDisplay}
-                        </Text>
-                        {selected && (
-                          <View style={[styles.fpCheck, { backgroundColor: meta.color }]}>
-                            <Feather name="check" size={12} color="#fff" />
-                          </View>
-                        )}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
+              
+              <PaymentSelector
+                empresaId={parceiroSel.id}
+                token={customer?.token}
+                colors={colors}
+                accentColor={accentColor}
+                directMethods={formasPagamento.map(k => ({
+                  id: k,
+                  label: FP_LABELS[k]?.label || k,
+                  icon: FP_LABELS[k]?.icon || "credit-card",
+                  color: FP_LABELS[k]?.color || accentColor,
+                  desc: k === "credito_gotaxi" ? `R$ ${creditoDisponivel.toFixed(2)} disponível` : undefined
+                }))}
+                selectedSource={paymentSource}
+                onSourceSelect={(src) => setPaymentSource(src)}
+                selectedMethod={formaEscolhida}
+                onMethodSelect={(m) => setFormaEscolhida(m)}
+                walletBalanceCents={walletBalance}
+              />
+
               {!formaEscolhida && (
                 <Text style={{ color: "#EF4444", fontFamily: "Inter_400Regular", fontSize: 12, marginTop: 6 }}>
                   Selecione uma forma de pagamento para finalizar
@@ -1154,17 +1155,10 @@ export default function ClienteFood() {
                       {" "}{parceiro.total_produtos} {Number(parceiro.total_produtos) === 1 ? "item" : "itens"} no cardápio
                     </Text>
                   </View>
-                  {parceiro.aberto !== false ? (
-                    <View style={[styles.abertoBadge, { backgroundColor: "#10B98122" }]}>
-                      <View style={[styles.abertoIndicator, { backgroundColor: "#10B981" }]} />
-                      <Text style={[styles.abertoText, { color: "#10B981", fontFamily: "Inter_600SemiBold" }]}>Aberto agora</Text>
-                    </View>
-                  ) : (
-                    <View style={[styles.abertoBadge, { backgroundColor: "#EF444422" }]}>
-                      <View style={[styles.abertoIndicator, { backgroundColor: "#EF4444" }]} />
-                      <Text style={[styles.abertoText, { color: "#EF4444", fontFamily: "Inter_600SemiBold" }]}>Fechado</Text>
-                    </View>
-                  )}
+                  <View style={[styles.abertoBadge, { backgroundColor: "#10B98122" }]}>
+                    <View style={[styles.abertoIndicator, { backgroundColor: "#10B981" }]} />
+                    <Text style={[styles.abertoText, { color: "#10B981", fontFamily: "Inter_600SemiBold" }]}>Aberto agora</Text>
+                  </View>
                 </View>
                 <Feather name="chevron-right" size={20} color={colors.textMuted} />
               </Pressable>

@@ -25,6 +25,7 @@ export default function ClienteLayout() {
         <Stack.Screen name="lojistas" />
         <Stack.Screen name="cadastro" options={{ animation: "slide_from_bottom" }} />
         <Stack.Screen name="perfil" />
+        <Stack.Screen name="carteira" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="afiliados" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="afiliados-relatorio" options={{ animation: "slide_from_right" }} />
       </Stack>

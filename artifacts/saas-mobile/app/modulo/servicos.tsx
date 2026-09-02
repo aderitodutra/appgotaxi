@@ -102,6 +102,13 @@ export default function ServicosScreen() {
   const [promocoes, setPromocoes] = useState<Promocao[]>([]);
   const [pacotes, setPacotes] = useState<Pacote[]>([]);
   const [metodosPag, setMetodosPag] = useState<string[]>(["pix", "dinheiro", "credito", "debito"]);
+  const [paymentConfig, setPaymentConfig] = useState({
+    receber_direto: true,
+    mercado_pago: false,
+    mp_public_key: "",
+    mp_user_id: "",
+    mp_access_token: "",
+  });
   const [savingPag, setSavingPag] = useState(false);
 
   const headers = {
@@ -150,7 +157,17 @@ export default function ServicosScreen() {
       ]);
       setDashboard(d); setAgendamentos(a); setPrestadores(p); setFinanceiro(f);
       setCategorias(c); setCatalogo(cat); setPromocoes(pr); setPacotes(pa);
-      if (pag && Array.isArray(pag.metodos)) setMetodosPag(pag.metodos);
+      if (pag) {
+        if (Array.isArray(pag.metodos)) setMetodosPag(pag.metodos);
+        setPaymentConfig(prev => ({
+          ...prev,
+          receber_direto: pag.receber_direto ?? true,
+          mercado_pago: pag.mercado_pago ?? false,
+          mp_public_key: pag.mp_public_key || "",
+          mp_user_id: pag.mp_user_id || "",
+          mp_access_token: "", // Never prefill from server
+        }));
+      }
     } catch (e) {
       console.error("Erro ao carregar dados de serviços:", e);
     } finally {
@@ -814,8 +831,19 @@ export default function ServicosScreen() {
     }
     setSavingPag(true);
     try {
-      await apiPut("/pdv/config-pagamento", { metodos: metodosPag });
-      Alert.alert("Pronto", "Formas de pagamento atualizadas.");
+      const payload: any = { 
+        metodos: metodosPag,
+        receber_direto: paymentConfig.receber_direto,
+        mercado_pago: paymentConfig.mercado_pago,
+        mp_public_key: paymentConfig.mp_public_key,
+        mp_user_id: paymentConfig.mp_user_id,
+      };
+      if (paymentConfig.mp_access_token) {
+        payload.mp_access_token = paymentConfig.mp_access_token;
+      }
+      await apiPut("/pdv/config-pagamento", payload);
+      setPaymentConfig(prev => ({ ...prev, mp_access_token: "" })); // Clear after saving
+      Alert.alert("Pronto", "Configurações de pagamento atualizadas.");
     } catch (e: any) {
       Alert.alert("Erro", e?.message || "Não foi possível salvar.");
     } finally {
@@ -847,43 +875,112 @@ export default function ServicosScreen() {
         )}
 
         <View style={[styles.repaseCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Text style={[styles.repaseCardTitle, { color: colors.text, fontFamily: "Inter_600SemiBold" }]}>Formas de Pagamento Aceitas</Text>
+          <Text style={[styles.repaseCardTitle, { color: colors.text, fontFamily: "Inter_600SemiBold" }]}>Configurações de Pagamento</Text>
           <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2, marginBottom: 10 }}>
-            Os métodos habilitados aparecerão para o cliente escolher no app ao agendar.
+            Configurações e métodos que o cliente verá no app ao agendar.
           </Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {PAG_OPCOES.map(opt => {
-              const enabled = metodosPag.includes(opt.key);
-              return (
-                <Pressable
-                  key={opt.key}
-                  onPress={() => togglePagamento(opt.key)}
+
+          <View style={{ gap: 14, marginBottom: 14 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={{ color: colors.text, fontFamily: "Inter_500Medium" }}>Receber direto (Dinheiro, Pix chave...)</Text>
+              <Pressable
+                onPress={() => setPaymentConfig(prev => ({ ...prev, receber_direto: !prev.receber_direto }))}
+                style={{
+                  width: 44, height: 24, borderRadius: 12, padding: 2,
+                  backgroundColor: paymentConfig.receber_direto ? "#10B981" : colors.border
+                }}
+              >
+                <View style={{
+                  width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff",
+                  transform: [{ translateX: paymentConfig.receber_direto ? 20 : 0 }]
+                }} />
+              </Pressable>
+            </View>
+
+            {paymentConfig.receber_direto && (
+              <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.border }}>
+                {PAG_OPCOES.map(opt => {
+                  const enabled = metodosPag.includes(opt.key);
+                  return (
+                    <Pressable
+                      key={opt.key}
+                      onPress={() => togglePagamento(opt.key)}
+                      style={{
+                        flexDirection: "row", alignItems: "center", gap: 6,
+                        paddingHorizontal: 12, paddingVertical: 8,
+                        borderRadius: 999, borderWidth: 1.5,
+                        borderColor: enabled ? MOD_COLOR : colors.border,
+                        backgroundColor: enabled ? MOD_COLOR + "15" : colors.background,
+                      }}
+                    >
+                      <Text style={{ fontSize: 14 }}>{opt.emoji}</Text>
+                      <Text style={{ color: enabled ? MOD_COLOR : colors.textSecondary, fontFamily: enabled ? "Inter_600SemiBold" : "Inter_400Regular", fontSize: 13 }}>
+                        {opt.label}
+                      </Text>
+                      {enabled && <Feather name="check" size={13} color={MOD_COLOR} />}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+              <Text style={{ color: colors.text, fontFamily: "Inter_500Medium" }}>Mercado Pago (Integração)</Text>
+              <Pressable
+                onPress={() => setPaymentConfig(prev => ({ ...prev, mercado_pago: !prev.mercado_pago }))}
+                style={{
+                  width: 44, height: 24, borderRadius: 12, padding: 2,
+                  backgroundColor: paymentConfig.mercado_pago ? "#00B1EA" : colors.border
+                }}
+              >
+                <View style={{
+                  width: 20, height: 20, borderRadius: 10, backgroundColor: "#fff",
+                  transform: [{ translateX: paymentConfig.mercado_pago ? 20 : 0 }]
+                }} />
+              </Pressable>
+            </View>
+
+            {paymentConfig.mercado_pago && (
+              <View style={{ gap: 10, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.border }}>
+                <TextInput
                   style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 6,
-                    paddingHorizontal: 12,
-                    paddingVertical: 8,
-                    borderRadius: 999,
-                    borderWidth: 1.5,
-                    borderColor: enabled ? MOD_COLOR : colors.border,
-                    backgroundColor: enabled ? MOD_COLOR + "15" : colors.background,
+                    backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
+                    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: colors.text, fontFamily: "Inter_400Regular"
                   }}
-                >
-                  <Text style={{ fontSize: 14 }}>{opt.emoji}</Text>
-                  <Text style={{ color: enabled ? MOD_COLOR : colors.textSecondary, fontFamily: enabled ? "Inter_600SemiBold" : "Inter_400Regular", fontSize: 13 }}>
-                    {opt.label}
-                  </Text>
-                  {enabled && <Feather name="check" size={13} color={MOD_COLOR} />}
-                </Pressable>
-              );
-            })}
+                  placeholder="Public Key"
+                  placeholderTextColor={colors.textMuted}
+                  value={paymentConfig.mp_public_key}
+                  onChangeText={(val) => setPaymentConfig(p => ({ ...p, mp_public_key: val }))}
+                />
+                <TextInput
+                  style={{
+                    backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
+                    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: colors.text, fontFamily: "Inter_400Regular"
+                  }}
+                  placeholder="User ID (Opcional)"
+                  placeholderTextColor={colors.textMuted}
+                  value={paymentConfig.mp_user_id}
+                  onChangeText={(val) => setPaymentConfig(p => ({ ...p, mp_user_id: val }))}
+                />
+                <TextInput
+                  style={{
+                    backgroundColor: colors.background, borderWidth: 1, borderColor: colors.border,
+                    borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, color: colors.text, fontFamily: "Inter_400Regular"
+                  }}
+                  placeholder="Access Token (Deixe em branco para não alterar)"
+                  placeholderTextColor={colors.textMuted}
+                  secureTextEntry
+                  value={paymentConfig.mp_access_token}
+                  onChangeText={(val) => setPaymentConfig(p => ({ ...p, mp_access_token: val }))}
+                />
+              </View>
+            )}
           </View>
+
           <Pressable
             onPress={handleSavePagamento}
             disabled={savingPag}
             style={{
-              marginTop: 14,
               backgroundColor: MOD_COLOR,
               paddingVertical: 11,
               borderRadius: 10,

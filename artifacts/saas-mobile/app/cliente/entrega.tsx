@@ -10,7 +10,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import Colors from "@/constants/colors";
+import PaymentSelector from "@/components/PaymentSelector";
+import { getWallet, checkoutPayment } from "@/api/payments";
+import { useCustomerAuth } from "@/context/CustomerAuthContext";
 import { useAuthGate } from "@/components/AuthGate";
+import * as Linking from "expo-linking";
 
 const MOD_COLOR = Colors.modules.entrega;
 
@@ -70,6 +74,7 @@ function routeDistanceKm(coords: Coords[]): number {
 
 export default function ClienteEntrega() {
   const { requireAuth } = useAuthGate("/cliente/entrega");
+  const { customer } = useCustomerAuth();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -81,6 +86,16 @@ export default function ClienteEntrega() {
   const [loading, setLoading] = useState(false);
   const [encomenda, setEncomenda] = useState<Encomenda | null>(null);
   const [erro, setErro] = useState("");
+
+  const [paymentSource, setPaymentSource] = useState<"direto" | "mercado_pago" | null>(null);
+  const [formaPagamento, setFormaPagamento] = useState("pix");
+  const [walletBalance, setWalletBalance] = useState(0);
+
+  useEffect(() => {
+    if (customer?.token) {
+      getWallet(customer.token).then(d => setWalletBalance(d.balanceCents)).catch(() => {});
+    }
+  }, [customer?.token]);
 
   // ─── Solicitar form ──────────────────────────────────────────────
   const [form, setForm] = useState({
@@ -312,6 +327,10 @@ export default function ClienteEntrega() {
       Alert.alert("Calcule a rota", "Confirme o endereço de entrega para calcular o valor.");
       return;
     }
+    if (!formaPagamento) {
+      Alert.alert("Pagamento", "Selecione uma forma de pagamento.");
+      return;
+    }
     setEnviando(true);
     try {
       const r = await fetch(`${API_BASE}/public/entrega/solicitar`, {
@@ -321,6 +340,7 @@ export default function ClienteEntrega() {
           ...form,
           empresa_id: empresaId ? Number(empresaId) : undefined,
           valor: valorEstimado,
+          forma_pagamento: formaPagamento,
           categoria,
           distancia_km: distanciaKm,
           coleta_lat: coletaCoords?.latitude,
@@ -330,6 +350,26 @@ export default function ClienteEntrega() {
         }),
       });
       if (!r.ok) throw new Error();
+      const createdData = await r.json().catch(() => ({}));
+      
+      if (paymentSource === "mercado_pago" && createdData?.id) {
+        try {
+          const checkout = await checkoutPayment(customer?.token || "", {
+            module: "entrega",
+            referenceId: createdData.id,
+            paymentSource: "mercado_pago",
+            mercadoPagoMethod: formaPagamento as any
+          });
+          if (checkout.sandboxInitPoint) {
+            Linking.openURL(checkout.sandboxInitPoint);
+          } else if (checkout.initPoint) {
+            Linking.openURL(checkout.initPoint);
+          }
+        } catch (e: any) {
+          Alert.alert("Aviso", "Solicitação criada, mas houve falha ao iniciar o Mercado Pago.");
+        }
+      }
+
       Alert.alert(
         "Solicitação enviada!",
         `Valor estimado: R$ ${valorEstimado.toFixed(2).replace(".", ",")}\nEm breve um entregador entrará em contato para combinar a coleta.`,
@@ -713,6 +753,27 @@ export default function ClienteEntrega() {
                 </View>
               </View>
             ))}
+
+            <View style={{ marginTop: 8 }}>
+              <Text style={[styles.fieldLabel, { color: colors.text, fontFamily: "Inter_500Medium" }]}>Pagamento</Text>
+              <PaymentSelector
+                empresaId={empresaId || null}
+                token={customer?.token}
+                colors={colors}
+                accentColor={MOD_COLOR}
+                directMethods={[
+                  { id: "pix", label: "Pix", icon: "zap", color: "#10B981" },
+                  { id: "dinheiro", label: "Dinheiro", icon: "dollar-sign", color: "#F59E0B" },
+                  { id: "credito", label: "Cartão de Crédito", icon: "credit-card", color: "#3B82F6" },
+                  { id: "debito", label: "Cartão de Débito", icon: "credit-card", color: "#8B5CF6" },
+                ]}
+                selectedSource={paymentSource}
+                onSourceSelect={(src) => setPaymentSource(src)}
+                selectedMethod={formaPagamento}
+                onMethodSelect={(m) => setFormaPagamento(m)}
+                walletBalanceCents={walletBalance}
+              />
+            </View>
 
             <Pressable
               style={[styles.submitBtn, { backgroundColor: MOD_COLOR, opacity: enviando || valorEstimado <= 0 ? 0.6 : 1 }]}

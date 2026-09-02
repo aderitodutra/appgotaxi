@@ -13,6 +13,9 @@ import GoogleMap from "@/components/GoogleMap";
 import type { LatLng } from "@/components/GoogleMap";
 import { useAuthGate } from "@/components/AuthGate";
 import { useCustomerAuth } from "@/context/CustomerAuthContext";
+import PaymentSelector from "@/components/PaymentSelector";
+import { getWallet, checkoutPayment } from "@/api/payments";
+import * as Linking from "expo-linking";
 
 const MOD_COLOR = Colors.modules.motorista;
 const API_BASE = process.env.EXPO_PUBLIC_DOMAIN ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api` : "/api";
@@ -95,6 +98,15 @@ export default function ClienteMotorista() {
   const [catSel, setCatSel] = useState<number | null>(null);
   const [distanciaKm, setDistanciaKm] = useState(0);
   const [pagamento, setPagamento] = useState("dinheiro");
+  const [paymentSource, setPaymentSource] = useState<"direto" | "mercado_pago" | null>(null);
+  const [walletBalance, setWalletBalance] = useState(0);
+
+  useEffect(() => {
+    if (customer?.token) {
+      getWallet(customer.token).then(d => setWalletBalance(d.balanceCents)).catch(() => {});
+    }
+  }, [customer?.token]);
+  
   const [creditoDisponivel, setCreditoDisponivel] = useState(0);
   const [estado, setEstado] = useState<"idle" | "buscando" | "aguardando" | "caminho" | "chegou">("idle");
   const [corridaId, setCorridaId] = useState<number | null>(null);
@@ -419,6 +431,25 @@ export default function ClienteMotorista() {
         });
         if (res.ok) {
           const corrida = await res.json();
+          
+          if (paymentSource === "mercado_pago") {
+            try {
+              const checkout = await checkoutPayment(customer?.token || "", {
+                module: "motorista",
+                referenceId: corrida.id,
+                paymentSource: "mercado_pago",
+                mercadoPagoMethod: pagamento as any
+              });
+              if (checkout.sandboxInitPoint) {
+                Linking.openURL(checkout.sandboxInitPoint);
+              } else if (checkout.initPoint) {
+                Linking.openURL(checkout.initPoint);
+              }
+            } catch (e: any) {
+              Alert.alert("Aviso", "Corrida solicitada, mas houve falha ao iniciar o Mercado Pago.");
+            }
+          }
+
           if (pagamento === "credito_gotaxi") {
             setCreditoDisponivel(prev => Math.max(0, prev - preco));
           }
@@ -919,20 +950,28 @@ export default function ClienteMotorista() {
 
         {/* Pagamento */}
         <Text style={[styles.tipoLabel, { color: colors.text, fontFamily: "Inter_600SemiBold", marginBottom: 10 }]}>Pagamento</Text>
-        <View style={styles.pagamentosRow}>
-          {[
+        <PaymentSelector
+          empresaId={EMPRESA_ID}
+          token={customer?.token}
+          colors={colors}
+          accentColor={MOD_COLOR}
+          directMethods={[
             ...PAGAMENTOS,
             ...(creditoDisponivel > 0
               ? [{ id: "credito_gotaxi", label: `Crédito GoTaxi\nR$ ${creditoDisponivel.toFixed(2)}`, icone: "award" as const }]
               : [])
-          ].map(p => (
-            <Pressable key={p.id} onPress={() => setPagamento(p.id)}
-              style={[styles.pagChip, { borderColor: pagamento === p.id ? (p.id === "credito_gotaxi" ? "#7C3AED" : MOD_COLOR) : colors.border, backgroundColor: pagamento === p.id ? (p.id === "credito_gotaxi" ? "#7C3AED15" : MOD_COLOR + "15") : colors.backgroundSecondary }]}>
-              <Feather name={p.icone} size={14} color={pagamento === p.id ? (p.id === "credito_gotaxi" ? "#7C3AED" : MOD_COLOR) : colors.textSecondary} />
-              <Text style={[styles.pagText, { color: pagamento === p.id ? (p.id === "credito_gotaxi" ? "#7C3AED" : MOD_COLOR) : colors.textSecondary, fontFamily: pagamento === p.id ? "Inter_600SemiBold" : "Inter_400Regular" }]}>{p.label}</Text>
-            </Pressable>
-          ))}
-        </View>
+          ].map(p => ({
+            id: p.id,
+            label: p.label,
+            icon: p.icone,
+            color: p.id === "credito_gotaxi" ? "#7C3AED" : MOD_COLOR
+          }))}
+          selectedSource={paymentSource}
+          onSourceSelect={(src) => setPaymentSource(src)}
+          selectedMethod={pagamento}
+          onMethodSelect={(m) => setPagamento(m)}
+          walletBalanceCents={walletBalance}
+        />
 
         {/* Botão chamar */}
         <Pressable

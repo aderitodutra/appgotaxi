@@ -331,14 +331,39 @@ export default function Pdv() {
   const [showPagamento, setShowPagamento] = useState(false);
   const [metodosPag, setMetodosPag] = useState<string[]>(["pix", "dinheiro", "credito", "debito"]);
   const [extrasModalProduto, setExtrasModalProduto] = useState<PdvProduct | null>(null);
+  
+  const [paymentOptions, setPaymentOptions] = useState<{mercadoPago: boolean, directPayment: boolean, beta: boolean, environment: string}>({
+    mercadoPago: false,
+    directPayment: true,
+    beta: false,
+    environment: "sandbox"
+  });
+  const [selectedReceivingSource, setSelectedReceivingSource] = useState<"direto" | "mercadopago" | null>(null);
 
   useEffect(() => {
     if (!token || !user?.empresaId) return;
+    
+    // Fetch local payment methods
     fetch("/api/pdv/config-pagamento", {
       headers: { Authorization: `Bearer ${token}`, "x-empresa-id": String(user.empresaId) },
     })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.metodos && Array.isArray(d.metodos) && d.metodos.length) setMetodosPag(d.metodos); })
+      .catch(() => {});
+      
+    // Fetch marketplace payment options
+    fetch(`/api/payments/options/${user.empresaId}`, {
+      headers: { Authorization: `Bearer ${token}`, "x-empresa-id": String(user.empresaId) },
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { 
+        if (d) setPaymentOptions({
+          mercadoPago: !!d.mercadoPago,
+          directPayment: d.directPayment !== false,
+          beta: !!d.beta,
+          environment: d.environment || "sandbox"
+        }); 
+      })
       .catch(() => {});
   }, [token, user?.empresaId]);
 
@@ -421,6 +446,12 @@ export default function Pdv() {
     if (c.clienteEndereco) setClienteEndereco(c.clienteEndereco);
   };
 
+  const [mpUnavailableMessage, setMpUnavailableMessage] = useState(false);
+
+  const confirmFinalizarMercadoPago = () => {
+    setMpUnavailableMessage(true);
+  };
+
   const trackingUrl = pedidoCriado
     ? `${window.location.origin}${import.meta.env.BASE_URL}track/${pedidoCriado.id}`
     : "";
@@ -453,37 +484,123 @@ export default function Pdv() {
                   <CreditCard className="w-5 h-5 text-primary" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-foreground">Forma de pagamento</h2>
+                  <h2 className="text-base font-bold text-foreground">Receber pagamento</h2>
                   <p className="text-xs text-muted-foreground">Total: <strong className="text-foreground">R$ {cartTotal.toFixed(2)}</strong></p>
                 </div>
               </div>
-              <button onClick={() => !isSubmitting && setShowPagamento(false)} className="text-muted-foreground hover:text-foreground" disabled={isSubmitting}>
+              <button onClick={() => {
+                if (!isSubmitting) {
+                  setShowPagamento(false);
+                  setMpUnavailableMessage(false);
+                  setSelectedReceivingSource(null);
+                }
+              }} className="text-muted-foreground hover:text-foreground" disabled={isSubmitting}>
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-2">
-              {metodosPag.length === 0 && (
-                <p className="text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-                  Nenhuma forma de pagamento habilitada. Vá em <strong>Configurações → Pagamento</strong>.
-                </p>
-              )}
-              {metodosPag.map(key => {
-                const meta = PAG_META[key] ?? { label: key, emoji: "💰", color: "#64748B" };
-                return (
-                  <button
-                    key={key}
-                    disabled={isSubmitting}
-                    onClick={() => confirmFinalizar(key, meta.label)}
-                    className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left disabled:opacity-50"
-                  >
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: `${meta.color}20` }}>
-                      <span>{meta.emoji}</span>
+            <div className="p-5 space-y-4">
+              
+              {!selectedReceivingSource ? (
+                <>
+                  <p className="text-sm font-semibold text-foreground">Como o cliente vai pagar?</p>
+                  <div className="space-y-3">
+                    {paymentOptions.mercadoPago && (
+                      <button
+                        onClick={() => setSelectedReceivingSource("mercadopago")}
+                        className="w-full flex items-center gap-3 p-4 rounded-xl border border-[#009EE3]/30 hover:border-[#009EE3] hover:bg-[#009EE3]/5 transition-colors text-left relative overflow-hidden"
+                      >
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl bg-[#009EE3]/10 text-[#009EE3]">
+                          <CreditCard className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1">
+                          <span className="block text-sm font-bold text-foreground">Mercado Pago</span>
+                          <span className="block text-xs text-muted-foreground mt-0.5">Link de pagamento online</span>
+                        </div>
+                        {paymentOptions.beta && (
+                          <span className="absolute top-0 right-0 bg-[#009EE3] text-white text-[9px] font-bold px-2 py-0.5 rounded-bl-lg uppercase">BETA</span>
+                        )}
+                      </button>
+                    )}
+
+                    {paymentOptions.directPayment && (
+                      <button
+                        onClick={() => setSelectedReceivingSource("direto")}
+                        className="w-full flex items-center gap-3 p-4 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                      >
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl bg-primary/10 text-primary">
+                          <Banknote className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1">
+                          <span className="block text-sm font-bold text-foreground">Receber direto</span>
+                          <span className="block text-xs text-muted-foreground mt-0.5">Pix, dinheiro ou maquininha</span>
+                        </div>
+                      </button>
+                    )}
+
+                    {!paymentOptions.mercadoPago && !paymentOptions.directPayment && (
+                      <p className="text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                        Nenhuma forma de recebimento habilitada. Vá em <strong>Configurações → Integração Mercado Pago</strong> para configurar.
+                      </p>
+                    )}
+                  </div>
+                </>
+              ) : selectedReceivingSource === "mercadopago" ? (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm text-[#009EE3] font-bold bg-[#009EE3]/10 px-3 py-2 rounded-lg cursor-pointer hover:bg-[#009EE3]/20" onClick={() => { setMpUnavailableMessage(false); setSelectedReceivingSource(null); }}>
+                    ← Voltar
+                  </div>
+
+                  {!mpUnavailableMessage ? (
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">O cliente pagará via Mercado Pago (cartão, Pix ou carteira MP). O valor será processado online e creditado na sua conta Mercado Pago após dedução de taxas.</p>
+                      
+                      <button
+                        onClick={confirmFinalizarMercadoPago}
+                        className="w-full flex items-center justify-center gap-2 p-3 rounded-xl bg-[#009EE3] hover:bg-[#009EE3]/90 text-white font-bold transition-colors"
+                      >
+                        Gerar Link de Pagamento
+                      </button>
                     </div>
-                    <span className="flex-1 text-sm font-semibold text-foreground">{meta.label}</span>
-                    {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /> : <CheckCircle2 className="w-4 h-4 text-muted-foreground/40" />}
-                  </button>
-                );
-              })}
+                  ) : (
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-center space-y-3">
+                      <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+                        <svg className="w-6 h-6 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 16v-4"/><path d="M12 8h.01"/><path d="M22 12A10 10 0 1 1 2 12a10 10 0 0 1 20 0z"/></svg>
+                      </div>
+                      <p className="text-sm text-blue-900 font-medium">Recurso em Desenvolvimento</p>
+                      <p className="text-xs text-blue-700">A geração de links do Mercado Pago direto pelo PDV Web presencial ainda está em desenvolvimento na versão Beta. Para usar Mercado Pago hoje, o cliente deve fazer o pedido pelo aplicativo.</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground font-bold bg-muted/50 px-3 py-2 rounded-lg cursor-pointer hover:bg-muted" onClick={() => setSelectedReceivingSource(null)}>
+                    ← Voltar
+                  </div>
+
+                  {metodosPag.length === 0 && (
+                    <p className="text-xs text-amber-600 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                      Nenhuma forma de pagamento habilitada. Vá em <strong>Configurações → Pagamento</strong>.
+                    </p>
+                  )}
+                  {metodosPag.map(key => {
+                    const meta = PAG_META[key] ?? { label: key, emoji: "💰", color: "#64748B" };
+                    return (
+                      <button
+                        key={key}
+                        disabled={isSubmitting}
+                        onClick={() => confirmFinalizar(key, meta.label)}
+                        className="w-full flex items-center gap-3 p-3.5 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-colors text-left disabled:opacity-50"
+                      >
+                        <div className="w-10 h-10 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: `${meta.color}20` }}>
+                          <span>{meta.emoji}</span>
+                        </div>
+                        <span className="flex-1 text-sm font-semibold text-foreground">{meta.label}</span>
+                        {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /> : <CheckCircle2 className="w-4 h-4 text-muted-foreground/40" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>

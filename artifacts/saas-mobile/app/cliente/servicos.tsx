@@ -7,6 +7,9 @@ import { router, useLocalSearchParams } from "expo-router";
 import Colors from "@/constants/colors";
 import { useCustomerAuth } from "@/context/CustomerAuthContext";
 import { useAuthGate } from "@/components/AuthGate";
+import PaymentSelector from "@/components/PaymentSelector";
+import { getWallet, checkoutPayment } from "@/api/payments";
+import * as Linking from "expo-linking";
 
 const MOD_COLOR = Colors.modules.servicos;
 
@@ -58,6 +61,14 @@ export default function ClienteServicos() {
   const [agendamentoId, setAgendamentoId] = useState<number | null>(null);
   const [metodosPag, setMetodosPag] = useState<string[]>(["pix", "dinheiro", "credito", "debito"]);
   const [formaSel, setFormaSel] = useState<string | null>(null);
+  const [paymentSource, setPaymentSource] = useState<"direto" | "mercado_pago" | null>(null);
+  const [walletBalance, setWalletBalance] = useState(0);
+
+  useEffect(() => {
+    if (customer?.token) {
+      getWallet(customer.token).then(d => setWalletBalance(d.balanceCents)).catch(() => {});
+    }
+  }, [customer?.token]);
 
   const topPadding = insets.top + (Platform.OS === "web" ? 67 : 0);
 
@@ -115,6 +126,25 @@ export default function ClienteServicos() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Erro ao agendar");
+      
+      if (paymentSource === "mercado_pago") {
+        try {
+          const checkout = await checkoutPayment(customer?.token || "", {
+            module: "servicos",
+            referenceId: data.id,
+            paymentSource: "mercado_pago",
+            mercadoPagoMethod: formaSel as any
+          });
+          if (checkout.sandboxInitPoint) {
+            Linking.openURL(checkout.sandboxInitPoint);
+          } else if (checkout.initPoint) {
+            Linking.openURL(checkout.initPoint);
+          }
+        } catch (e: any) {
+          Alert.alert("Aviso", "Agendamento concluído, mas houve falha ao iniciar o Mercado Pago.");
+        }
+      }
+
       setAgendamentoId(data.id);
       setAgendado(true);
     } catch (err: any) {
@@ -285,32 +315,25 @@ export default function ClienteServicos() {
 
                 {horarioSel && (
                   <>
-                    <Text style={[styles.sectionTitle, { color: colors.text, fontFamily: "Inter_600SemiBold", marginTop: 18 }]}>Forma de pagamento</Text>
+                    <Text style={[styles.sectionTitle, { color: colors.text, fontFamily: "Inter_600SemiBold", marginTop: 18 }]}>Pagamento</Text>
                     <View style={{ gap: 8 }}>
-                      {metodosPag.length === 0 && (
-                        <Text style={{ color: colors.textMuted, fontSize: 13, fontFamily: "Inter_400Regular" }}>
-                          Este prestador ainda não configurou formas de recebimento.
-                        </Text>
-                      )}
-                      {metodosPag.map(m => {
-                        const meta = PAG_META[m] ?? { label: m, emoji: "💰" };
-                        const sel = formaSel === m;
-                        return (
-                          <Pressable
-                            key={m}
-                            onPress={() => setFormaSel(m)}
-                            style={{
-                              flexDirection: "row", alignItems: "center", gap: 12,
-                              padding: 14, borderRadius: 12, borderWidth: 2,
-                              borderColor: sel ? corEmpresa : colors.border,
-                              backgroundColor: sel ? corEmpresa + "15" : colors.card,
-                            }}>
-                            <Text style={{ fontSize: 22 }}>{meta.emoji}</Text>
-                            <Text style={{ flex: 1, color: colors.text, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>{meta.label}</Text>
-                            {sel && <Feather name="check-circle" size={20} color={corEmpresa} />}
-                          </Pressable>
-                        );
-                      })}
+                      <PaymentSelector
+                        empresaId={empresaId}
+                        token={customer?.token}
+                        colors={colors}
+                        accentColor={corEmpresa}
+                        directMethods={metodosPag.map(m => ({
+                          id: m,
+                          label: PAG_META[m]?.label || m,
+                          icon: "credit-card",
+                          color: corEmpresa
+                        }))}
+                        selectedSource={paymentSource}
+                        onSourceSelect={(src) => setPaymentSource(src)}
+                        selectedMethod={formaSel}
+                        onMethodSelect={(m) => setFormaSel(m)}
+                        walletBalanceCents={walletBalance}
+                      />
                     </View>
                   </>
                 )}

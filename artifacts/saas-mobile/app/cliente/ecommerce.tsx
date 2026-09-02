@@ -9,6 +9,9 @@ import Colors from "@/constants/colors";
 import { useCart } from "@/context/CartContext";
 import { useCustomerAuth } from "@/context/CustomerAuthContext";
 import { useAuthGate } from "@/components/AuthGate";
+import PaymentSelector from "@/components/PaymentSelector";
+import { getWallet, checkoutPayment } from "@/api/payments";
+import * as Linking from "expo-linking";
 
 const MOD_COLOR = Colors.modules.ecommerce;
 
@@ -70,8 +73,26 @@ export default function ClienteEcommerce() {
   const [produtosDB, setProdutosDB] = useState<ProdutoDB[]>([]);
   const [loadingProdutos, setLoadingProdutos] = useState(true);
   const [enviandoPedido, setEnviandoPedido] = useState(false);
+  const params = useLocalSearchParams<{ empresaId?: string; nomeEmpresa?: string; corEmpresa?: string }>();
+  const empresaId = Number(params.empresaId ?? 0);
+  const nomeEmpresa = params.nomeEmpresa ?? "Loja Online";
+  const corEmpresa = params.corEmpresa ?? MOD_COLOR;
+
+  const { customer } = useCustomerAuth();
+  const { requireAuth } = useAuthGate("/cliente/ecommerce");
+  const { items, vendor, totalQtd, addItem, removeItem, updateQtd, clearCart } = useCart();
+
   const [metodosPag, setMetodosPag] = useState<string[]>(["pix", "dinheiro", "credito", "debito"]);
   const [formaSel, setFormaSel] = useState<string | null>(null);
+  const [paymentSource, setPaymentSource] = useState<"direto" | "mercado_pago" | null>(null);
+  const [walletBalance, setWalletBalance] = useState(0);
+
+  useEffect(() => {
+    if (customer?.token) {
+      getWallet(customer.token).then(d => setWalletBalance(d.balanceCents)).catch(() => {});
+    }
+  }, [customer?.token]);
+
   const [tipoEntrega, setTipoEntrega] = useState<"delivery" | "retirar">("delivery");
   const [horarioRetirada, setHorarioRetirada] = useState("");
   const [tempoEntregaEco, setTempoEntregaEco] = useState(30);
@@ -90,15 +111,6 @@ export default function ClienteEcommerce() {
   const [complemento, setComplemento] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessiontoken = useRef(Math.random().toString(36).slice(2));
-
-  const params = useLocalSearchParams<{ empresaId?: string; nomeEmpresa?: string; corEmpresa?: string }>();
-  const empresaId = Number(params.empresaId ?? 0);
-  const nomeEmpresa = params.nomeEmpresa ?? "Loja Online";
-  const corEmpresa = params.corEmpresa ?? MOD_COLOR;
-
-  const { customer } = useCustomerAuth();
-  const { requireAuth } = useAuthGate("/cliente/ecommerce");
-  const { items, vendor, totalQtd, addItem, removeItem, updateQtd, clearCart } = useCart();
 
   useEffect(() => {
     if (!empresaId) { setLoadingProdutos(false); return; }
@@ -242,6 +254,25 @@ export default function ClienteEcommerce() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Erro ao finalizar");
+      
+      if (paymentSource === "mercado_pago") {
+        try {
+          const checkout = await checkoutPayment(customer?.token || "", {
+            module: "ecommerce",
+            referenceId: data.id,
+            paymentSource: "mercado_pago",
+            mercadoPagoMethod: formaSel as any
+          });
+          if (checkout.sandboxInitPoint) {
+            Linking.openURL(checkout.sandboxInitPoint);
+          } else if (checkout.initPoint) {
+            Linking.openURL(checkout.initPoint);
+          }
+        } catch (e: any) {
+          Alert.alert("Aviso", "Pedido criado, mas houve falha ao iniciar o Mercado Pago.");
+        }
+      }
+
       setPedidoId(data.id ?? null);
       pedidoFormaPagamentoRef.current = formaSel;
       pedidoEmpresaIdRef.current = empresaId;
@@ -567,32 +598,24 @@ export default function ClienteEcommerce() {
 
               {/* ── Forma de pagamento ───────────────────────────── */}
               <View style={{ marginTop: 4, gap: 10 }}>
-                <Text style={{ color: colors.text, fontFamily: "Inter_700Bold", fontSize: 15 }}>Forma de pagamento</Text>
-                {metodosPag.length === 0 ? (
-                  <Text style={{ color: colors.textMuted, fontSize: 13, fontFamily: "Inter_400Regular" }}>
-                    Esta loja ainda não configurou formas de pagamento.
-                  </Text>
-                ) : (
-                  metodosPag.map(m => {
-                    const meta = PAG_META[m] ?? { label: m, emoji: "💰" };
-                    const sel = formaSel === m;
-                    return (
-                      <Pressable
-                        key={m}
-                        onPress={() => setFormaSel(m)}
-                        style={{
-                          flexDirection: "row", alignItems: "center", gap: 12,
-                          padding: 14, borderRadius: 12, borderWidth: 2,
-                          borderColor: sel ? corEmpresa : colors.border,
-                          backgroundColor: sel ? corEmpresa + "15" : colors.card,
-                        }}>
-                        <Text style={{ fontSize: 22 }}>{meta.emoji}</Text>
-                        <Text style={{ flex: 1, color: colors.text, fontFamily: "Inter_600SemiBold", fontSize: 14 }}>{meta.label}</Text>
-                        {sel && <Feather name="check-circle" size={20} color={corEmpresa} />}
-                      </Pressable>
-                    );
-                  })
-                )}
+                <Text style={{ color: colors.text, fontFamily: "Inter_700Bold", fontSize: 15 }}>Pagamento</Text>
+                <PaymentSelector
+                  empresaId={empresaId}
+                  token={customer?.token}
+                  colors={colors}
+                  accentColor={corEmpresa}
+                  directMethods={metodosPag.map(m => ({
+                    id: m,
+                    label: PAG_META[m]?.label || m,
+                    icon: "credit-card",
+                    color: corEmpresa
+                  }))}
+                  selectedSource={paymentSource}
+                  onSourceSelect={(src) => setPaymentSource(src)}
+                  selectedMethod={formaSel}
+                  onMethodSelect={(m) => setFormaSel(m)}
+                  walletBalanceCents={walletBalance}
+                />
               </View>
             </>
           )}

@@ -10,6 +10,9 @@ import { router, useLocalSearchParams } from "expo-router";
 import Colors from "@/constants/colors";
 import { useCustomerAuth } from "@/context/CustomerAuthContext";
 import { useAuthGate } from "@/components/AuthGate";
+import PaymentSelector from "@/components/PaymentSelector";
+import { getWallet, checkoutPayment } from "@/api/payments";
+import * as Linking from "expo-linking";
 
 const MOD_COLOR = Colors.modules.passagens;
 
@@ -154,7 +157,16 @@ export default function ClientePassagens() {
   const [assento, setAssento] = useState("");
   const [passageiroNome, setPassageiroNome] = useState(customer?.nome ?? "");
   const [passageiroCpf, setPassageiroCpf] = useState("");
-  const [formaPag, setFormaPag] = useState<"pix" | "pix_direto" | "dinheiro" | "credito">("pix");
+  const [formaPag, setFormaPag] = useState<string>("pix");
+  const [paymentSource, setPaymentSource] = useState<"direto" | "mercado_pago" | null>(null);
+  const [walletBalance, setWalletBalance] = useState(0);
+
+  useEffect(() => {
+    if (customer?.token) {
+      getWallet(customer.token).then(d => setWalletBalance(d.balanceCents)).catch(() => {});
+    }
+  }, [customer?.token]);
+
   const [pixInfo, setPixInfo] = useState<PixInfo | null>(null);
   const [pixCopiado, setPixCopiado] = useState(false);
   const [confirmadoId, setConfirmadoId] = useState<{ id: number; codigo: string } | null>(null);
@@ -328,6 +340,25 @@ export default function ClientePassagens() {
       });
       if (r.ok) {
         const data = await r.json();
+        
+        if (paymentSource === "mercado_pago") {
+          try {
+            const checkout = await checkoutPayment(customer?.token || "", {
+              module: "passagens",
+              referenceId: data.id,
+              paymentSource: "mercado_pago",
+              mercadoPagoMethod: formaPag as any
+            });
+            if (checkout.sandboxInitPoint) {
+              Linking.openURL(checkout.sandboxInitPoint);
+            } else if (checkout.initPoint) {
+              Linking.openURL(checkout.initPoint);
+            }
+          } catch (e: any) {
+            Alert.alert("Aviso", "Passagem comprada, mas falha ao iniciar o Mercado Pago.");
+          }
+        }
+        
         setConfirmadoId({ id: data.id, codigo: data.codigo });
         setStep("confirmado");
       } else {
@@ -926,32 +957,25 @@ export default function ClientePassagens() {
 
           {/* Forma de pagamento */}
           <View style={[styles.formCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.formLabel, { color: colors.text, fontFamily: "Inter_600SemiBold" }]}>Forma de pagamento</Text>
+            <Text style={[styles.formLabel, { color: colors.text, fontFamily: "Inter_600SemiBold" }]}>Pagamento</Text>
             <View style={{ gap: 8, marginTop: 8 }}>
-              {[
-                { id: "pix" as const, icon: "zap", label: "PIX GoTaxi", desc: "Pague via PIX pela plataforma", color: "#22C55E" },
-                ...(pixInfo ? [{ id: "pix_direto" as const, icon: "send", label: "PIX Direto à Empresa", desc: `Pague direto para ${pixInfo.beneficiario}`, color: "#10B981" }] : []),
-                { id: "credito" as const, icon: "credit-card", label: "Cartão de Crédito", desc: "Débito ou crédito", color: "#3B82F6" },
-                { id: "dinheiro" as const, icon: "dollar-sign", label: "Dinheiro", desc: "Pagamento presencial", color: "#F59E0B" },
-              ].map(fp => (
-                <Pressable
-                  key={fp.id}
-                  onPress={() => setFormaPag(fp.id)}
-                  style={[styles.fpOption, {
-                    borderColor: formaPag === fp.id ? fp.color : colors.border,
-                    backgroundColor: formaPag === fp.id ? fp.color + "15" : colors.backgroundSecondary,
-                  }]}
-                >
-                  <View style={[styles.fpIcon, { backgroundColor: fp.color + "20" }]}>
-                    <Feather name={fp.icon as any} size={18} color={fp.color} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[{ fontSize: 14, color: colors.text, fontFamily: "Inter_600SemiBold" }]}>{fp.label}</Text>
-                    <Text style={[{ fontSize: 12, color: colors.textMuted, fontFamily: "Inter_400Regular" }]}>{fp.desc}</Text>
-                  </View>
-                  {formaPag === fp.id && <Feather name="check-circle" size={18} color={fp.color} />}
-                </Pressable>
-              ))}
+              <PaymentSelector
+                empresaId={horarioSel?.empresa_id || null}
+                token={customer?.token}
+                colors={colors}
+                accentColor={MOD_COLOR}
+                directMethods={[
+                  { id: "pix", icon: "zap", label: "PIX GoTaxi", desc: "Pague via PIX pela plataforma", color: "#22C55E" },
+                  ...(pixInfo ? [{ id: "pix_direto", icon: "send", label: "PIX Direto à Empresa", desc: `Pague direto para ${pixInfo.beneficiario}`, color: "#10B981" }] : []),
+                  { id: "credito", icon: "credit-card", label: "Cartão de Crédito", desc: "Débito ou crédito", color: "#3B82F6" },
+                  { id: "dinheiro", icon: "dollar-sign", label: "Dinheiro", desc: "Pagamento presencial", color: "#F59E0B" },
+                ]}
+                selectedSource={paymentSource}
+                onSourceSelect={(src) => setPaymentSource(src)}
+                selectedMethod={formaPag}
+                onMethodSelect={(m) => setFormaPag(m)}
+                walletBalanceCents={walletBalance}
+              />
             </View>
 
             {/* PIX Direto — mostrar chave */}

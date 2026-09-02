@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import {
   View, Text, StyleSheet, Pressable, TextInput,
-  useColorScheme, ScrollView, Alert, ActivityIndicator, Linking, Modal, Image, Share,
+  useColorScheme, ScrollView, Alert, ActivityIndicator, Linking, Modal, Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
@@ -318,6 +318,21 @@ export default function PerfilScreen() {
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: colors.text, fontFamily: "Inter_700Bold" }]}>Entrega & Pagamento</Text>
 
+          {/* CARTEIRA GOTAXI */}
+          <Pressable
+            style={[styles.optCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            onPress={() => router.push("/cliente/carteira")}
+          >
+            <View style={[styles.optIcon, { backgroundColor: "#00B1EA20" }]}>
+              <Feather name="briefcase" size={18} color="#00B1EA" />
+            </View>
+            <View style={styles.optInfo}>
+              <Text style={[styles.optLabel, { color: colors.text, fontFamily: "Inter_600SemiBold" }]}>Minha Carteira</Text>
+              <Text style={[styles.optSub, { color: colors.textSecondary, fontFamily: "Inter_400Regular" }]}>Saldo e movimentações</Text>
+            </View>
+            <Feather name="chevron-right" size={16} color={colors.textMuted} />
+          </Pressable>
+
           {/* ENDEREÇO */}
           <Pressable
             style={[styles.optCard, { backgroundColor: colors.card, borderColor: colors.border }]}
@@ -418,54 +433,12 @@ export default function PerfilScreen() {
             </View>
             <View style={styles.optInfo}>
               <Text style={[styles.optLabel, { color: "#16A34A", fontFamily: "Inter_700Bold" }]}>Programa de Afiliados</Text>
-              <Text style={[styles.optSub, { color: "#22C55E", fontFamily: "Inter_400Regular" }]}>Indique amigos e ganhe R$ 10 por indicação</Text>
+              <Text style={[styles.optSub, { color: "#22C55E", fontFamily: "Inter_400Regular" }]}>Indique amigos e ganhe comissão</Text>
             </View>
             <Feather name="chevron-right" size={16} color="#22C55E" />
           </Pressable>
-        </View>
 
-        {/* CARD DE INDICAÇÃO */}
-        {customer?.codigoReferral && customer?.isAfiliado && (
-          <View style={[styles.referralCard, { backgroundColor: isDark ? "#052e16" : "#f0fdf4", borderColor: "#22C55E50" }]}>
-            <View style={styles.referralHeader}>
-              <View style={[styles.referralIconBox, { backgroundColor: "#22C55E20" }]}>
-                <Feather name="share-2" size={18} color="#22C55E" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.referralTitle, { color: isDark ? "#4ade80" : "#16a34a", fontFamily: "Inter_700Bold" }]}>
-                  Seu Código de Indicação
-                </Text>
-                <Text style={[styles.referralSub, { color: isDark ? "#86efac" : "#15803d", fontFamily: "Inter_400Regular" }]}>
-                  Compartilhe e ganhe comissão por indicações
-                </Text>
-              </View>
-            </View>
-            <View style={[styles.referralCodeBox, { backgroundColor: isDark ? "#14532d" : "#dcfce7", borderColor: "#22C55E40" }]}>
-              <Text style={[styles.referralCode, { color: isDark ? "#4ade80" : "#16a34a", fontFamily: "Inter_700Bold" }]}>
-                {customer?.codigoReferral}
-              </Text>
-            </View>
-            <View style={styles.referralBtns}>
-              <Pressable
-                style={[styles.referralBtn, { backgroundColor: "#22C55E" }]}
-                onPress={() => {
-                  const link = `https://gotaxi.com.br/afiliados/r/${customer?.codigoReferral}`;
-                  Share.share({ message: `🚖 Cadastre-se no GoTaxi usando meu link e ganhe benefícios!\n\n${link}` });
-                }}
-              >
-                <Feather name="share" size={15} color="#fff" />
-                <Text style={[styles.referralBtnText, { fontFamily: "Inter_600SemiBold" }]}>Compartilhar</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.referralBtn, { backgroundColor: isDark ? "#166534" : "#16a34a" }]}
-                onPress={() => router.push("/cliente/afiliados" as any)}
-              >
-                <Feather name="gift" size={15} color="#fff" />
-                <Text style={[styles.referralBtnText, { fontFamily: "Inter_600SemiBold" }]}>Ver saldo</Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
+        </View>
 
         {/* SAIR */}
         <Pressable style={[styles.sairBtn, { borderColor: "#EF4444" }]} onPress={handleLogout}>
