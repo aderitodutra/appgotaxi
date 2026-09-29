@@ -1,5 +1,6 @@
 import app from "./app";
 import { db } from "@workspace/db";
+import { sql } from "drizzle-orm";
 
 const rawPort = process.env["PORT"];
 
@@ -200,15 +201,6 @@ async function runStartupMigrations() {
     `ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS codigo_referral VARCHAR(20) UNIQUE`,
     `ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS indicado_por VARCHAR(20)`,
     `UPDATE usuarios SET codigo_referral = UPPER(LEFT(REGEXP_REPLACE(nome, '[^A-Za-z0-9]', '', 'g'), 4)) || LPAD(id::text, 4, '0') WHERE codigo_referral IS NULL`,
-
-    // Reclassifica usuarios papel='admin' que na verdade são parceiros do PDV.
-    // Critério: tem empresa_id e a empresa NÃO é a "GoTaxi Sistema" (id=1).
-    // O super-admin real (Admin GoTaxi, id=2) é preservado pois está vinculado à empresa 1.
-    // Idempotente: roda em todo boot mas só atualiza quem ainda tiver papel='admin'.
-    `UPDATE usuarios SET papel = 'parceiro'
-       WHERE papel = 'admin'
-         AND empresa_id IS NOT NULL
-         AND empresa_id <> 1`,
 
     `ALTER TABLE empresas ADD COLUMN IF NOT EXISTS indicado_por VARCHAR(20)`,
     `ALTER TABLE empresas ADD COLUMN IF NOT EXISTS numero_conta_mercado_pago VARCHAR(100)`,
@@ -486,6 +478,20 @@ async function runStartupMigrations() {
       // Constraint already exists — safe to ignore
     }
   }
+
+  const superAdminEmail = process.env["SUPER_ADMIN_EMAIL"]?.trim();
+  if (superAdminEmail) {
+    const restored = await db.execute(sql`
+      UPDATE usuarios
+      SET papel = 'admin', ativo = true
+      WHERE LOWER(TRIM(email)) = LOWER(${superAdminEmail})
+      RETURNING id
+    `);
+    if (restored.rows.length === 0) {
+      console.warn("SUPER_ADMIN_EMAIL is configured, but no matching user was found");
+    }
+  }
+
   console.log("Startup migrations done");
 }
 
