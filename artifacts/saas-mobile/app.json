@@ -5,7 +5,7 @@
 <<<<<<< HEAD
     "version": "2.0.4",
 =======
-    "version": "2.3.4",
+    "version": "2.3.6",
 >>>>>>> f8aa225cb62ee2333227944ebc124bc84a0bd453
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -32,7 +32,7 @@
 <<<<<<< HEAD
       "versionCode": 204,
 =======
-      "versionCode": 234,
+      "versionCode": 236,
 >>>>>>> f8aa225cb62ee2333227944ebc124bc84a0bd453
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
