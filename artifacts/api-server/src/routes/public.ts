@@ -7,6 +7,8 @@ import bcrypt from "bcryptjs";
 import { broadcastToEmpresa, sendExpoPushToEmpresa } from "./pdv";
 import { dispatchEntregaToEntregadores } from "./motorista-app";
 import { customerIdFromRequest } from "../lib/customerToken";
+import { roadRoute } from "../lib/roadDistance";
+import { normalizarTelefone, telefoneNormalizadoSql } from "../lib/telefone";
 
 const router: IRouter = Router();
 
@@ -714,9 +716,8 @@ router.post("/entrega/solicitar", async (req, res) => {
     }
     let authoritativeKm = paymentSource === "direto" ? (Number(distancia_km) || 0) : 0;
     if (validCoords) {
-      const [lat1, lng1, lat2, lng2] = coords.map(x => x * Math.PI / 180);
-      const h = Math.sin((lat2 - lat1) / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin((lng2 - lng1) / 2) ** 2;
-      authoritativeKm = Math.round(6371 * 2 * Math.asin(Math.sqrt(h)) * 10) / 10;
+      const route = await roadRoute(coords[0], coords[1], coords[2], coords[3]);
+      authoritativeKm = Math.round(route.km * 10) / 10;
     }
     const category = ["padrao", "expressa", "grande"].includes(String(categoria)) ? String(categoria) : "padrao";
     const defaults: Record<string, [number, number, number]> = { padrao: [10, 3, 2], expressa: [15, 3, 3], grande: [20, 3, 4] };
@@ -766,9 +767,9 @@ router.post("/parceiro-register", async (req, res) => {
     }
 
     // Check if phone already exists
-    const phoneNum = String(whatsapp).replace(/\D/g, "");
+    const phoneNum = normalizarTelefone(whatsapp);
     if (phoneNum.length >= 8) {
-      const existingPhone = await db.execute(sql`SELECT id FROM usuarios WHERE telefone = ${phoneNum} LIMIT 1`);
+      const existingPhone = await db.execute(sql`SELECT id FROM usuarios WHERE ${telefoneNormalizadoSql("telefone")} = ${phoneNum} LIMIT 1`);
       if ((existingPhone.rows as any[]).length > 0) {
         return res.status(409).json({ error: "conflict", message: "Já existe uma conta com este WhatsApp" });
       }
@@ -789,7 +790,7 @@ router.post("/parceiro-register", async (req, res) => {
     // Create usuario
     const userRow = await db.execute(sql`
       INSERT INTO usuarios (nome, email, senha_hash, papel, empresa_id, telefone)
-      VALUES (${nome.trim()}, ${email.toLowerCase().trim()}, ${senhaHash}, 'parceiro', ${empresa.id}, ${whatsapp.replace(/\D/g, "")})
+      VALUES (${nome.trim()}, ${email.toLowerCase().trim()}, ${senhaHash}, 'parceiro', ${empresa.id}, ${phoneNum})
       RETURNING id, nome, email, papel, empresa_id
     `);
     const usuario = (userRow.rows as any[])[0];
