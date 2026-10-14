@@ -462,6 +462,12 @@ async function runStartupMigrations() {
     `ALTER TABLE pedidos_pdv ADD COLUMN IF NOT EXISTS comprovante_pix TEXT`,
     `ALTER TABLE ecommerce_pedidos ADD COLUMN IF NOT EXISTS comprovante_pix TEXT`,
 
+    // ── E-commerce: frete Correios por tabela (sem API) ──────────────────────
+    `ALTER TABLE config_ecommerce_pdv ADD COLUMN IF NOT EXISTS correios_cep_origem TEXT`,
+    `ALTER TABLE config_ecommerce_pdv ADD COLUMN IF NOT EXISTS correios_tabela JSONB`,
+    `ALTER TABLE config_ecommerce_pdv ADD COLUMN IF NOT EXISTS correios_peso_padrao_kg NUMERIC(8,3) NOT NULL DEFAULT 0.5`,
+    `ALTER TABLE produtos_pdv ADD COLUMN IF NOT EXISTS peso_kg NUMERIC(8,3)`,
+
     // ── Configurações globais (chave/valor) ──────────────────────────────────
     `CREATE TABLE IF NOT EXISTS gotatxi_config (
       chave TEXT PRIMARY KEY,
