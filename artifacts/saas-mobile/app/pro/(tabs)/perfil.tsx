@@ -5,7 +5,8 @@ import {
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
+import DefinirDestino, { useDestino } from "@/components/DefinirDestino";
 import * as ImagePicker from "expo-image-picker";
 import QRCode from "react-native-qrcode-svg";
 import { useProAuth, PRO_COLORS, PRO_LABELS, PRO_ICONS } from "@/context/ProAuthContext";
@@ -381,7 +382,7 @@ function buildPixImgUrl(pixImagem: string, apiBase: string) {
   return `${base}${pixImagem}`;
 }
 
-type TelaMenu = "documentos" | "dados" | "recebimentos" | "pix" | "veiculo" | "indicacao";
+type TelaMenu = "documentos" | "dados" | "recebimentos" | "pix" | "veiculo" | "indicacao" | "destino";
 
 const TELA_TITULOS: Record<TelaMenu, string> = {
   documentos: "Documentos",
@@ -390,6 +391,7 @@ const TELA_TITULOS: Record<TelaMenu, string> = {
   pix: "PIX",
   veiculo: "Veículo",
   indicacao: "Indicação",
+  destino: "Definir destino",
 };
 
 function formatBRL(v: number | string | null | undefined) {
@@ -407,6 +409,8 @@ export default function ProPerfil() {
   const { proUser, logout, refreshPerfil, updateLocal } = useProAuth();
   const [editando, setEditando] = useState(false);
   const [tela, setTela] = useState<TelaMenu | null>(null);
+  const { info: destinoInfo, setInfo: setDestinoInfo, carregar: carregarDestino } = useDestino(proUser?.token);
+  useFocusEffect(useCallback(() => { carregarDestino(); }, [carregarDestino]));
   const [salvando, setSalvando] = useState(false);
   const [veiculoModal, setVeiculoModal] = useState(false);
   const [pinModal, setPinModal] = useState(false);
@@ -712,6 +716,11 @@ export default function ProPerfil() {
     },
     { key: "indicacao", icon: "🔗", title: "Indicação", subtitle: "Seu link para indicar amigos", onPress: () => abrirTela("indicacao") },
     { key: "pin", icon: "🔐", title: "Alterar PIN", subtitle: "PIN de acesso ao app", onPress: () => setPinModal(true) },
+    {
+      key: "destino", icon: "📍", title: "Definir destino",
+      subtitle: destinoInfo?.ativo ? `Indo para: ${destinoInfo.endereco ?? ""}` : "Desligado",
+      onPress: () => abrirTela("destino"),
+    },
   ];
 
   return (
@@ -1049,6 +1058,9 @@ export default function ProPerfil() {
             </View>
           )}
         </View>
+              )}
+              {tela === "destino" && !!proUser.token && (
+                <DefinirDestino token={proUser.token} cor={cor} onChange={setDestinoInfo} />
               )}
               {tela === "indicacao" && (
                 proUser.codigo_referral ? (
