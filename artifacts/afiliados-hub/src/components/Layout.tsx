@@ -3,16 +3,18 @@ import { useLocation, Link } from "wouter";
 import { clearToken } from "@/lib/api";
 import {
   LayoutDashboard, Users, DollarSign, Wallet, BarChart3,
-  LogOut, Menu, X, ChevronRight, Building2,
+  LogOut, Menu, X, ChevronRight, Building2, PlayCircle, Receipt,
 } from "lucide-react";
 
 const nav = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/indicados", label: "Meus Indicados", icon: Users },
+  { href: "/financeiro", label: "Financeiro", icon: Receipt },
   { href: "/corporativo", label: "Plataforma Corporativa", icon: Building2 },
   { href: "/comissoes", label: "Comissões", icon: DollarSign },
   { href: "/resgates", label: "Saques", icon: Wallet },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3 },
+  { href: "/treinamento", label: "Treinamento", icon: PlayCircle },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
