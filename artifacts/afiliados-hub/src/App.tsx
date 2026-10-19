@@ -5,6 +5,7 @@ import { getToken, clearToken, api } from "@/lib/api";
 import Login from "@/pages/Login";
 import Dashboard from "@/pages/Dashboard";
 import Indicados from "@/pages/Indicados";
+import Financeiro from "@/pages/Financeiro";
 import Corporativo from "@/pages/Corporativo";
 import Comissoes from "@/pages/Comissoes";
 import Resgates from "@/pages/Resgates";
@@ -48,6 +49,15 @@ function AppRoutes() {
           <AuthGuard>
             <Layout>
               <Indicados />
+            </Layout>
+          </AuthGuard>
+        )}
+      </Route>
+      <Route path="/financeiro">
+        {() => (
+          <AuthGuard>
+            <Layout>
+              <Financeiro />
             </Layout>
           </AuthGuard>
         )}
