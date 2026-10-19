@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
+import { calcularFinanceiro, ensureDespesasTable, lerDespesa, lerPeriodo, listarDespesas } from "../lib/financeiroProfissional";
 import { db } from "@workspace/db";
 import {
   ensureDestinoMotorista, coordenadaValida, distanciaKm, distanciaKmSql,
@@ -930,6 +931,68 @@ router.get("/ganhos", async (req: Request, res: Response) => {
     });
   } catch (_) {
     return res.status(500).json({ error: "Erro ao buscar ganhos" });
+  }
+});
+
+// ── Financeiro: despesas e lucro do profissional ─────────────────────────────
+router.get("/financeiro", async (req: Request, res: Response) => {
+  const motoristaId = getMotoristaId(req);
+  if (!motoristaId) return res.status(401).json({ error: "Não autenticado" });
+  try {
+    const { de, ate } = lerPeriodo(req.query);
+    const resumo = await calcularFinanceiro(motoristaId, de, ate);
+    return res.json({ ...resumo, lista_despesas: await listarDespesas(motoristaId, de, ate) });
+  } catch (e) {
+    console.error("[financeiro]", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
+
+router.post("/despesas", async (req: Request, res: Response) => {
+  const motoristaId = getMotoristaId(req);
+  if (!motoristaId) return res.status(401).json({ error: "Não autenticado" });
+  try {
+    await ensureDespesasTable();
+    const d = lerDespesa(req.body);
+    if (typeof d === "string") return res.status(400).json({ error: d });
+    const rows = await db.execute(sql`INSERT INTO motorista_despesas (motorista_id, categoria, valor, data, descricao)
+      VALUES (${motoristaId}, ${d.categoria}, ${d.valor}, ${d.data}::date, ${d.descricao}) RETURNING id`);
+    return res.status(201).json(rows.rows[0]);
+  } catch (e) {
+    console.error("[despesas]", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
+
+router.put("/despesas/:id", async (req: Request, res: Response) => {
+  const motoristaId = getMotoristaId(req);
+  if (!motoristaId) return res.status(401).json({ error: "Não autenticado" });
+  try {
+    await ensureDespesasTable();
+    const d = lerDespesa(req.body);
+    if (typeof d === "string") return res.status(400).json({ error: d });
+    const rows = await db.execute(sql`UPDATE motorista_despesas SET categoria = ${d.categoria}, valor = ${d.valor},
+      data = ${d.data}::date, descricao = ${d.descricao}
+      WHERE id = ${Number(req.params.id)} AND motorista_id = ${motoristaId} RETURNING id`);
+    if (!rows.rows.length) return res.status(404).json({ error: "not_found" });
+    return res.json(rows.rows[0]);
+  } catch (e) {
+    console.error("[despesas]", e);
+    return res.status(500).json({ error: "server_error" });
+  }
+});
+
+router.delete("/despesas/:id", async (req: Request, res: Response) => {
+  const motoristaId = getMotoristaId(req);
+  if (!motoristaId) return res.status(401).json({ error: "Não autenticado" });
+  try {
+    await ensureDespesasTable();
+    const rows = await db.execute(sql`DELETE FROM motorista_despesas WHERE id = ${Number(req.params.id)} AND motorista_id = ${motoristaId} RETURNING id`);
+    if (!rows.rows.length) return res.status(404).json({ error: "not_found" });
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[despesas]", e);
+    return res.status(500).json({ error: "server_error" });
   }
 });
 

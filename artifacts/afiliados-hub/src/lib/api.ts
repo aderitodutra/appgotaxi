@@ -39,6 +39,8 @@ export const api = {
   cadastrarIndicado: (data: any) => req("POST", "/cadastrar-indicado", data),
   dashboard: () => req("GET", "/dashboard"),
   indicados: () => req("GET", "/indicados"),
+  financeiroIndicados: (de: string, ate: string) => req("GET", `/financeiro-indicados?de=${de}&ate=${ate}`),
+  financeiroIndicado: (id: number, de: string, ate: string) => req("GET", `/financeiro-indicados/${id}?de=${de}&ate=${ate}`),
   comissoes: () => req("GET", "/comissoes"),
   resgates: () => req("GET", "/resgates"),
   resgatar: (valor: number, chave_pix: string) => req("POST", "/resgatar", { valor, chave_pix }),
