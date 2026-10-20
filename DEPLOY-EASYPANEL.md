@@ -67,6 +67,7 @@ Crie um arquivo de texto no seu PC chamado `minhas-chaves-producao.txt` e preenc
 JWT_SECRET = (veja como gerar abaixo)
 GOOGLE_MAPS_KEY = 
 GOOGLE_MAPS_SERVER_KEY = 
+GOOGLE_MAPS_WEB_KEY = 
 AI_INTEGRATIONS_OPENAI_API_KEY = 
 DB_PASSWORD = (invente uma senha forte, ex: GoTaxi@2026#Seguro)
 ```
@@ -85,6 +86,7 @@ DB_PASSWORD = (invente uma senha forte, ex: GoTaxi@2026#Seguro)
 4. Crie 2 chaves: uma com restrição de domínio (`gotaxi.com.br`) e outra sem restrição
 5. A com restrição de domínio = `GOOGLE_MAPS_KEY`
 6. A sem restrição = `GOOGLE_MAPS_SERVER_KEY`
+7. (Opcional) Chave com restrição de sites (`gotaxi.com.br/*` e `*.gotaxi.com.br/*`) = `GOOGLE_MAPS_WEB_KEY`. É a chave enviada ao navegador para os mapas do PDV (Time Line e rastreamento). Se ficar vazia, usa `GOOGLE_MAPS_KEY`.
 
 **AI_INTEGRATIONS_OPENAI_API_KEY** (suporte por IA — opcional):
 1. Acesse https://platform.openai.com/api-keys
@@ -336,6 +338,7 @@ DATABASE_URL=postgresql://gotaxi:SUA_SENHA@gotaxi-db:5432/gotaxi
 JWT_SECRET=COLE_AQUI_O_JWT_SECRET_QUE_VOCE_GEROU
 GOOGLE_MAPS_KEY=COLE_SUA_CHAVE_GOOGLE_MAPS_COM_RESTRICAO
 GOOGLE_MAPS_SERVER_KEY=COLE_SUA_CHAVE_GOOGLE_MAPS_SEM_RESTRICAO
+GOOGLE_MAPS_WEB_KEY=COLE_SUA_CHAVE_GOOGLE_MAPS_RESTRITA_A_SITES
 AI_INTEGRATIONS_OPENAI_API_KEY=COLE_SUA_CHAVE_OPENAI
 PUBLIC_DOMAIN=https://gotaxi.com.br
 ```
