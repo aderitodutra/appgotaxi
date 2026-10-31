@@ -408,11 +408,13 @@ router.get("/admin/resumo", async (req, res) => {
 router.get("/admin/centros", async (req, res) => {
   if (requireAdmin(req, res) === null) return;
   try {
+    const status = ["pendente", "aprovado", "bloqueado"].includes(String(req.query.status)) ? String(req.query.status) : null;
     res.json(await rows(sql`SELECT ${CENTRO_PUBLICO},
       (SELECT COUNT(*) FROM sos_recuperandos r WHERE r.centro_id = sos_centros.id)::int AS total_recuperandos_cadastrados,
       (SELECT COUNT(*) FROM sos_necessidades n WHERE n.centro_id = sos_centros.id AND n.status = 'aberta')::int AS necessidades_abertas,
       (SELECT COALESCE(SUM(valor),0) FROM sos_distribuicoes d WHERE d.centro_id = sos_centros.id)::float AS total_distribuido
-      FROM sos_centros ORDER BY (status = 'pendente') DESC, criado_em DESC`));
+      FROM sos_centros WHERE (${status}::text IS NULL OR status = ${status})
+      ORDER BY (status = 'pendente') DESC, criado_em DESC`));
   } catch (e) { falha(res, e); }
 });
 

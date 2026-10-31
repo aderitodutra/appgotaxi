@@ -8,6 +8,7 @@
 > - ✅ Painel PDV em `pdv.gotaxi.com.br`  
 > - ✅ Painel Admin em `admin.gotaxi.com.br`  
 > - ✅ Hub de Afiliados em `gotaxi.com.br/afiliados/`  
+> - ✅ SOS GoTaxi em `sos.gotaxi.com.br` (ver `migration/easypanel-templates/06-sos.md`)  
 > - ✅ Apps mobile apontando para o novo servidor  
 
 ---
@@ -47,6 +48,7 @@ Adicione estes registros (substitua `SEU_IP_VPS` pelo IP real):
 | A | `api` | `SEU_IP_VPS` | 3600 |
 | A | `pdv` | `SEU_IP_VPS` | 3600 |
 | A | `admin` | `SEU_IP_VPS` | 3600 |
+| A | `sos` | `SEU_IP_VPS` | 3600 |
 
 > ℹ️ **Não precisa de subdomínio para afiliados.** O Hub de Afiliados fica em `gotaxi.com.br/afiliados/`, servido pelo mesmo container da landing page.
 
